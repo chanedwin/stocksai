@@ -5,7 +5,10 @@ import pandas as pd
 def fetch_price_data(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
     stock = yf.Ticker(ticker)
     df = stock.history(period=period, interval=interval)
-    df.index = df.index.tz_localize(None)
+    if df.empty:
+        return df
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
     df = df.rename(columns={
         "Open": "open",
         "High": "high",

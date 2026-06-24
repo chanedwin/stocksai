@@ -60,7 +60,7 @@ def _clean_statement(df) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     df = df.copy()
-    if hasattr(df.columns, "tz_localize"):
+    if isinstance(df.columns, pd.DatetimeIndex) and df.columns.tz is not None:
         df.columns = df.columns.tz_localize(None)
     df.columns = [c.strftime("%Y-%m-%d") if hasattr(c, "strftime") else str(c) for c in df.columns]
     return df

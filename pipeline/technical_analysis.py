@@ -43,9 +43,12 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Volume: 20-day volume moving average
     df["volume_sma_20"] = ta.trend.sma_indicator(df["volume"].astype(float), window=20)
 
-    # Volume: VWAP (approximated for daily data)
+    # Volume: VWAP rolling 20-day approximation (true VWAP is intraday only)
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
-    df["vwap"] = (typical_price * df["volume"]).cumsum() / df["volume"].cumsum()
+    df["vwap"] = (
+        (typical_price * df["volume"]).rolling(window=20).sum()
+        / df["volume"].rolling(window=20).sum()
+    )
 
     # Daily returns
     df["daily_return"] = df["close"].pct_change()
