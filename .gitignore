@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+data/*.csv
+data/*.json
+.streamlit/
+.DS_Store
