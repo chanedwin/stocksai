@@ -1,10 +1,10 @@
 import pandas as pd
 import numpy as np
 from pipeline.technical_analysis import compute_indicators
-from pipeline.pattern_detection import detect_signals, compute_trend_scores, detect_support_resistance
+from pipeline.pattern_detection import detect_signals, detect_support_resistance
 from pipeline.flow_analysis import get_short_interest, get_options_flow, get_ownership_breakdown, get_insider_activity
-from pipeline.market_context import get_analyst_data, get_earnings_impact
-from pipeline.earnings_analysis import compute_growth_trends, compute_margin_trends
+from pipeline.market_context import get_analyst_data
+from pipeline.earnings_analysis import compute_margin_trends
 
 
 TIMEFRAMES = {
@@ -90,10 +90,6 @@ def compute_seasonal_analysis(price_df: pd.DataFrame) -> dict:
 
     # Monthly seasonality: average return by month across all years
     monthly = df.groupby("month")["daily_return"].agg(["mean", "std", "count"])
-    monthly["total_return"] = df.groupby("month")[["close"]].apply(
-        lambda g: (g["close"].iloc[-1] / g["close"].iloc[0] - 1) * 100
-        if len(g) > 1 else 0
-    ).values
 
     month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

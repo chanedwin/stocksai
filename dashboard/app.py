@@ -96,7 +96,7 @@ def load_market_context(t, p):
 
 
 @st.cache_data(ttl=900)
-def load_signal_analysis(t, p):
+def load_signal_analysis(t):
     price = fetch_price_data(t, period="5y")
     fund = fetch_fundamental_data(t)
     return aggregate_all_signals(price, fund["info"], fund, t)
@@ -165,7 +165,7 @@ cols[5].metric("Div Yield", f"{div_yield * 100:.2f}%" if div_yield else "N/A")
 st.header("Signal Overview")
 
 with st.spinner("Computing signals across all timeframes..."):
-    sig_analysis = load_signal_analysis(ticker, period)
+    sig_analysis = load_signal_analysis(ticker)
 
 composite = sig_analysis["composite_score"]
 verdict = sig_analysis["verdict"]
@@ -222,7 +222,6 @@ with cat_col:
         bar_color = GREEN if score > 15 else (RED if score < -15 else YELLOW)
         bar_label = "Bullish" if score > 15 else ("Bearish" if score < -15 else "Neutral")
         bar_width = abs(score)
-        bar_direction = "right" if score >= 0 else "left"
 
         st.markdown(
             f'<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid #33333366">'
