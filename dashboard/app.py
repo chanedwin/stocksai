@@ -17,6 +17,7 @@ from pipeline.flow_analysis import (
 from pipeline.pattern_detection import detect_support_resistance, detect_signals, compute_trend_scores
 from pipeline.market_context import get_peer_comparison, get_macro_indicators, get_analyst_data, get_earnings_impact
 from pipeline.earnings_analysis import compute_growth_trends, compute_margin_trends, compute_revenue_composition
+from pipeline.signal_aggregator import aggregate_all_signals
 
 st.set_page_config(page_title="Stock Analysis", layout="wide")
 
@@ -94,6 +95,13 @@ def load_market_context(t, p):
     return peers, macro, analyst
 
 
+@st.cache_data(ttl=900)
+def load_signal_analysis(t, p):
+    price = fetch_price_data(t, period="5y")
+    fund = fetch_fundamental_data(t)
+    return aggregate_all_signals(price, fund["info"], fund, t)
+
+
 with st.spinner("Fetching data..."):
     price_df, fundamentals = load_data(ticker, period)
 
@@ -153,46 +161,273 @@ div_yield = info.get("dividendYield")
 cols[5].metric("Div Yield", f"{div_yield * 100:.2f}%" if div_yield else "N/A")
 
 
-# --- Trend Scores & Signals ---
-st.header("Signals & Trend Scores")
+# --- Signal Overview ---
+st.header("Signal Overview")
 
-score_cols = st.columns(len(trend_scores) + 1)
-for i, (key, data) in enumerate(trend_scores.items()):
-    label = key.replace("_", " ").title()
-    badge_type = "bullish" if "Bullish" in data["label"] else ("bearish" if "Bearish" in data["label"] else "neutral")
-    if "max" in data:
-        val_str = f"{data['value']}/{data['max']}"
-    else:
-        val_str = f"{data['value']}%"
-    score_cols[i].markdown(
-        f"**{label}**\n\n{val_str}\n\n{signal_badge(badge_type, data['label'])}",
+with st.spinner("Computing signals across all timeframes..."):
+    sig_analysis = load_signal_analysis(ticker, period)
+
+composite = sig_analysis["composite_score"]
+verdict = sig_analysis["verdict"]
+cat_scores = sig_analysis["category_scores"]
+tf_scores = sig_analysis["timeframe_scores"]
+all_sigs = sig_analysis["all_signals"]
+
+# Composite gauge + category breakdown
+gauge_col, cat_col = st.columns([1, 2])
+
+with gauge_col:
+    verdict_color = GREEN if composite > 15 else (RED if composite < -15 else YELLOW)
+    gauge_fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=composite,
+        number={"suffix": "", "font": {"size": 48}},
+        title={"text": verdict, "font": {"size": 20, "color": verdict_color}},
+        gauge={
+            "axis": {"range": [-100, 100], "tickvals": [-100, -50, 0, 50, 100]},
+            "bar": {"color": verdict_color},
+            "steps": [
+                {"range": [-100, -40], "color": f"{RED}22"},
+                {"range": [-40, -15], "color": f"{RED}11"},
+                {"range": [-15, 15], "color": f"{YELLOW}11"},
+                {"range": [15, 40], "color": f"{GREEN}11"},
+                {"range": [40, 100], "color": f"{GREEN}22"},
+            ],
+            "threshold": {"line": {"color": "white", "width": 2}, "thickness": 0.8, "value": composite},
+        },
+    ))
+    gauge_fig.update_layout(height=250, margin=dict(l=30, r=30, t=60, b=20))
+    st.plotly_chart(gauge_fig, use_container_width=True)
+
+    st.markdown(
+        f'<div style="text-align:center;color:#aaa;font-size:0.85em">'
+        f'Bullish weight: <span style="color:{GREEN}">{sig_analysis["total_bullish"]}</span> | '
+        f'Bearish weight: <span style="color:{RED}">{sig_analysis["total_bearish"]}</span></div>',
         unsafe_allow_html=True,
     )
 
-# Short interest in the last column
-if short_data.get("short_pct_of_float") is not None:
-    si_pct = short_data["short_pct_of_float"] * 100
-    si_type = "bearish" if si_pct > 5 else ("neutral" if si_pct > 2 else "bullish")
-    si_change = short_data.get("short_change_pct")
-    si_delta = ""
-    if si_change is not None:
-        arrow = "^" if si_change > 0 else "v"
-        si_color = RED if si_change > 0 else GREEN
-        si_delta = f'<span style="color:{si_color}"> {arrow} {abs(si_change)*100:.1f}% MoM</span>'
-    score_cols[-1].markdown(
-        f"**Short Interest**\n\n{si_pct:.2f}% of float{si_delta}\n\n"
-        f"{signal_badge(si_type, 'Days to cover: ' + str(short_data.get('short_ratio', 'N/A')))}",
-        unsafe_allow_html=True,
-    )
+with cat_col:
+    # Category score bars
+    cat_display = {
+        "technical": "Technical",
+        "fundamental": "Fundamental",
+        "flow": "Money Flow",
+        "analyst": "Analyst",
+    }
+    cat_items = [(cat_display.get(k, k.title()), v) for k, v in cat_scores.items() if k in cat_display]
 
-# Active signals
-if signals:
-    st.subheader("Active Signals")
-    signal_html = " &nbsp; ".join(
-        signal_badge(s["type"], f"{s['signal']}: {s['description']}")
-        for s in sorted(signals, key=lambda x: {"strong": 0, "moderate": 1, "weak": 2}.get(x["strength"], 3))
-    )
-    st.markdown(signal_html, unsafe_allow_html=True)
+    st.markdown("**Signal Breakdown by Category**")
+    for label, data in cat_items:
+        score = data["score"]
+        bar_color = GREEN if score > 15 else (RED if score < -15 else YELLOW)
+        bar_label = "Bullish" if score > 15 else ("Bearish" if score < -15 else "Neutral")
+        bar_width = abs(score)
+        bar_direction = "right" if score >= 0 else "left"
+
+        st.markdown(
+            f'<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid #33333366">'
+            f'<span style="width:110px;font-weight:600">{label}</span>'
+            f'<div style="flex:1;display:flex;align-items:center">'
+            f'<div style="width:50%;display:flex;justify-content:flex-end">'
+            f'{"<div style=\"height:22px;background:" + RED + ";border-radius:4px 0 0 4px;width:" + str(bar_width) + "%\"></div>" if score < 0 else ""}'
+            f'</div>'
+            f'<div style="width:2px;height:28px;background:#666;margin:0 2px"></div>'
+            f'<div style="width:50%">'
+            f'{"<div style=\"height:22px;background:" + GREEN + ";border-radius:0 4px 4px 0;width:" + str(bar_width) + "%\"></div>" if score >= 0 else ""}'
+            f'</div></div>'
+            f'<span style="width:80px;text-align:right;color:{bar_color};font-weight:600;font-size:0.9em">{bar_label}</span>'
+            f'<span style="width:50px;text-align:right;color:#aaa;font-size:0.8em">{data["signal_count"]} sig</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Timeframe scores
+    st.markdown("")
+    st.markdown("**Timeframe Analysis**")
+    tf_display = {"daily": "Daily", "weekly": "Weekly", "monthly": "Monthly"}
+    tf_html = '<div style="display:flex;gap:12px">'
+    for tf_key in ["daily", "weekly", "monthly"]:
+        if tf_key not in tf_scores:
+            continue
+        data = tf_scores[tf_key]
+        score = data["score"]
+        tf_color = GREEN if score > 15 else (RED if score < -15 else YELLOW)
+        tf_label = "Bullish" if score > 15 else ("Bearish" if score < -15 else "Neutral")
+        tf_html += (
+            f'<div style="flex:1;text-align:center;padding:10px;border:1px solid {tf_color}33;border-radius:8px;background:{tf_color}11">'
+            f'<div style="color:#aaa;font-size:0.72em">{tf_display.get(tf_key, tf_key)}</div>'
+            f'<div style="font-size:1.5em;font-weight:700;color:{tf_color}">{score:+d}</div>'
+            f'<div style="font-size:0.8em;color:{tf_color}">{tf_label}</div>'
+            f'<div style="font-size:0.7em;color:#aaa;margin-top:4px">'
+            f'<span style="color:{GREEN}">{data["bullish_count"]}B</span> / '
+            f'<span style="color:{RED}">{data["bearish_count"]}Be</span> / '
+            f'<span style="color:{YELLOW}">{data["neutral_count"]}N</span></div>'
+            f'</div>'
+        )
+    tf_html += '</div>'
+    st.markdown(tf_html, unsafe_allow_html=True)
+
+# Signal list grouped by category
+st.subheader("All Active Signals")
+
+sig_tabs = st.tabs(["All", "Technical", "Fundamental", "Money Flow", "Analyst"])
+
+with sig_tabs[0]:
+    sorted_sigs = sorted(all_sigs, key=lambda x: (
+        {"strong": 0, "moderate": 1, "weak": 2}.get(x["strength"], 3),
+        {"bearish": 0, "bullish": 1, "neutral": 2}.get(x["type"], 3),
+    ))
+    sig_html = '<div style="display:flex;flex-wrap:wrap;gap:6px">'
+    for s in sorted_sigs:
+        tf_tag = f'[{s.get("timeframe", "")}]' if s.get("timeframe") else ""
+        strength_icon = {"strong": "***", "moderate": "**", "weak": "*"}.get(s["strength"], "")
+        sig_html += signal_badge(s["type"], f'{strength_icon} {tf_tag} {s["signal"]}: {s["description"]}')
+    sig_html += '</div>'
+    st.markdown(sig_html, unsafe_allow_html=True)
+
+cat_tab_map = {"Technical": "technical", "Fundamental": "fundamental", "Money Flow": "flow", "Analyst": "analyst"}
+for tab, tab_label in zip(sig_tabs[1:], ["Technical", "Fundamental", "Money Flow", "Analyst"]):
+    with tab:
+        cat_key = cat_tab_map[tab_label]
+        cat_sigs = [s for s in all_sigs if s.get("category") == cat_key]
+        if cat_sigs:
+            for s in sorted(cat_sigs, key=lambda x: {"strong": 0, "moderate": 1, "weak": 2}.get(x["strength"], 3)):
+                tf_tag = f'[{s.get("timeframe", "")}] ' if s.get("timeframe") else ""
+                st.markdown(
+                    f'<div style="padding:6px 0;border-bottom:1px solid #33333322;display:flex;align-items:center;gap:8px">'
+                    f'{signal_badge(s["type"], s["signal"])}'
+                    f'<span style="color:#aaa;font-size:0.8em">{tf_tag}</span>'
+                    f'<span style="font-size:0.9em">{s["description"]}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info(f"No {tab_label.lower()} signals detected.")
+
+# Yearly performance
+yearly_perf = sig_analysis["yearly_performance"]
+if yearly_perf:
+    st.subheader("Yearly Performance")
+    yp_cols = min(len(yearly_perf), 8)
+    year_html = f'<div style="display:grid;grid-template-columns:repeat({yp_cols}, 1fr);gap:6px">'
+    for y in yearly_perf[-8:]:
+        y_color = GREEN if y["return_pct"] > 0 else RED
+        year_html += (
+            f'<div style="text-align:center;padding:8px;border:1px solid {y_color}33;border-radius:8px;background:{y_color}11">'
+            f'<div style="font-weight:700">{y["year"]}</div>'
+            f'<div style="font-size:1.3em;font-weight:600;color:{y_color}">{y["return_pct"]:+.1f}%</div>'
+            f'<div style="font-size:0.7em;color:#aaa">Range: {y["range_pct"]:.0f}%</div>'
+            f'</div>'
+        )
+    year_html += '</div>'
+    st.markdown(year_html, unsafe_allow_html=True)
+
+# Seasonal Analysis
+seasonal = sig_analysis.get("seasonal", {})
+if seasonal.get("available"):
+    st.subheader("Seasonal Analysis")
+
+    season_tab1, season_tab2, season_tab3 = st.tabs(["Monthly", "Day of Week", "Quarterly"])
+
+    with season_tab1:
+        monthly_data = seasonal["monthly"]
+        months = [m["month"] for m in monthly_data]
+        avg_returns = [m["avg_monthly_return"] for m in monthly_data]
+        win_rates = [m["win_rate"] for m in monthly_data]
+        bar_colors = [GREEN if r > 0 else RED for r in avg_returns]
+
+        fig_month = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_month.add_trace(
+            go.Bar(x=months, y=avg_returns, name="Avg Monthly Return (%)",
+                   marker_color=bar_colors,
+                   text=[f"{r:+.1f}%" for r in avg_returns], textposition="outside"),
+            secondary_y=False,
+        )
+        fig_month.add_trace(
+            go.Scatter(x=months, y=win_rates, name="Win Rate (%)",
+                       line=dict(color=BLUE, width=2), mode="lines+markers"),
+            secondary_y=True,
+        )
+        fig_month.update_layout(
+            height=350, margin=dict(l=60, r=60, t=20, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        fig_month.update_yaxes(title_text="Avg Return (%)", secondary_y=False)
+        fig_month.update_yaxes(title_text="Win Rate (%)", secondary_y=True, range=[0, 100])
+        fig_month.add_hline(y=0, line_color=GREY, opacity=0.3, secondary_y=False)
+        st.plotly_chart(fig_month, use_container_width=True)
+
+        current_month = pd.Timestamp.now().month
+        current_month_data = next((m for m in monthly_data if m["month_num"] == current_month), None)
+        if current_month_data:
+            cm_color = GREEN if current_month_data["avg_monthly_return"] > 0 else RED
+            st.markdown(
+                f'<div style="padding:10px;border:1px solid {cm_color}33;border-radius:8px;background:{cm_color}11;text-align:center">'
+                f'<span style="font-weight:600">Current month ({current_month_data["month"]}): </span>'
+                f'<span style="color:{cm_color};font-weight:700">avg {current_month_data["avg_monthly_return"]:+.2f}%</span>'
+                f' | Win rate: {current_month_data["win_rate"]:.0f}%'
+                f' | Based on {current_month_data["years_analyzed"]} years</div>',
+                unsafe_allow_html=True,
+            )
+
+    with season_tab2:
+        dow_data = seasonal["day_of_week"]
+        days = [d["day"] for d in dow_data]
+        dow_returns = [d["avg_return"] for d in dow_data]
+        dow_wins = [d["win_rate"] for d in dow_data]
+        dow_colors = [GREEN if r > 0 else RED for r in dow_returns]
+
+        fig_dow = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_dow.add_trace(
+            go.Bar(x=days, y=dow_returns, name="Avg Daily Return (%)",
+                   marker_color=dow_colors,
+                   text=[f"{r:+.3f}%" for r in dow_returns], textposition="outside"),
+            secondary_y=False,
+        )
+        fig_dow.add_trace(
+            go.Scatter(x=days, y=dow_wins, name="Win Rate (%)",
+                       line=dict(color=BLUE, width=2), mode="lines+markers"),
+            secondary_y=True,
+        )
+        fig_dow.update_layout(
+            height=300, margin=dict(l=60, r=60, t=20, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        fig_dow.update_yaxes(title_text="Avg Return (%)", secondary_y=False)
+        fig_dow.update_yaxes(title_text="Win Rate (%)", secondary_y=True, range=[40, 65])
+        fig_dow.add_hline(y=0, line_color=GREY, opacity=0.3, secondary_y=False)
+        st.plotly_chart(fig_dow, use_container_width=True)
+
+    with season_tab3:
+        q_data = seasonal["quarterly"]
+        quarters = [q["quarter"] for q in q_data]
+        q_returns = [q["avg_return"] for q in q_data]
+        q_wins = [q["win_rate"] for q in q_data]
+        q_colors = [GREEN if r > 0 else RED for r in q_returns]
+
+        fig_q = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_q.add_trace(
+            go.Bar(x=quarters, y=q_returns, name="Avg Quarterly Return (%)",
+                   marker_color=q_colors,
+                   text=[f"{r:+.1f}%" for r in q_returns], textposition="outside"),
+            secondary_y=False,
+        )
+        fig_q.add_trace(
+            go.Scatter(x=quarters, y=q_wins, name="Win Rate (%)",
+                       line=dict(color=BLUE, width=2), mode="lines+markers"),
+            secondary_y=True,
+        )
+        fig_q.update_layout(
+            height=300, margin=dict(l=60, r=60, t=20, b=20),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        fig_q.update_yaxes(title_text="Avg Return (%)", secondary_y=False)
+        fig_q.update_yaxes(title_text="Win Rate (%)", secondary_y=True, range=[0, 100])
+        fig_q.add_hline(y=0, line_color=GREY, opacity=0.3, secondary_y=False)
+        st.plotly_chart(fig_q, use_container_width=True)
+
+st.markdown("---")
+st.caption("Analysis is for informational and educational purposes only, not financial advice.")
 
 
 # --- Technical Analysis ---
