@@ -2,7 +2,7 @@
 
 ## Overview
 
-The pipeline fetches stock market data, computes technical and fundamental analysis, and serves it through an interactive Streamlit dashboard. It defaults to Google (GOOGL) but supports any publicly traded ticker.
+The pipeline fetches stock market data, computes technical and fundamental analysis, detects patterns and money flow signals, and serves it through an interactive Streamlit dashboard. It defaults to Google (GOOGL) but supports any publicly traded ticker.
 
 ## Architecture
 
@@ -11,6 +11,8 @@ pipeline/
   data_fetcher.py           Pulls price (OHLCV) and fundamental data via yfinance
   technical_analysis.py     Computes TA indicators on a price DataFrame
   fundamental_analysis.py   Extracts ratios and cleans financial statements
+  flow_analysis.py          Institutional ownership, insider activity, short interest, options flow
+  pattern_detection.py      Support/resistance, trading signals, trend scores
 
 dashboard/
   app.py                    Streamlit app that ties the pipeline together
@@ -56,6 +58,28 @@ All data comes from **yfinance**, which pulls from Yahoo Finance. No API key req
 
 **Dividends**: Dividend yield, payout ratio
 
+## Money Flow Analysis
+
+- **Ownership breakdown**: % held by insiders, institutions, retail (from yfinance info)
+- **Institutional holders**: top holders with shares, value, and position changes
+- **Insider activity**: recent transactions (buys/sells) and 6-month summary
+- **Short interest**: shares short, % of float, days to cover, month-over-month change
+- **Options flow**: put/call ratio (volume and OI), max pain strike, unusual activity (volume > 3x OI)
+
+## Pattern Detection
+
+**Support/Resistance**: local minima/maxima detection with 2% tolerance clustering. Levels show touch count and distance from current price. Requires at least 40 trading days of data.
+
+**Trading Signals**:
+- Golden Cross / Death Cross (SMA 50 vs 200)
+- RSI overbought (>70) / oversold (<30) / midline cross
+- MACD bullish/bearish crossover
+- Bollinger Band break / squeeze
+- Volume spikes (>2x 20-day average)
+- Price vs SMA position
+
+**Trend Scores**: composite scores for trend (MA alignment), momentum (RSI + MACD), volatility (ATR%), and short interest sentiment.
+
 ## Running the Dashboard
 
 ```bash
@@ -67,12 +91,17 @@ The dashboard runs on `http://localhost:8501` by default.
 
 ## Dashboard Features
 
-- Candlestick chart with configurable overlays (moving averages, Bollinger Bands)
-- RSI subplot with overbought/oversold markers (70/30)
-- MACD subplot with signal line and histogram
+- Trend scores and active signal badges (color-coded bullish/bearish/neutral)
+- Candlestick chart with configurable overlays (MAs, Bollinger Bands, support/resistance lines)
+- RSI subplot with shaded overbought/oversold zones
+- MACD subplot with signal line and color-coded histogram
 - Volume bars colored by price direction, with 20-day SMA
-- Key metric cards (price, change, market cap, P/E, EPS, dividend yield)
-- Fundamental ratio breakdowns by category
+- Color-coded indicator cards (price vs MA, RSI status, MACD direction, ATR volatility)
+- Support/resistance tables with touch count and distance from price
+- Money Flow section: ownership pie chart, insider activity summary, short interest with MoM trend
+- Options flow: put/call ratios, max pain, unusual activity table
+- Institutional holders and insider transaction tables
+- Fundamental ratio cards with color-coded values
 - Full financial statements (annual + quarterly) in tabbed views
 - Earnings history table
 - Company description
