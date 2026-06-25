@@ -20,7 +20,7 @@ from pipeline.earnings_analysis import compute_growth_trends, compute_margin_tre
 from pipeline.signal_aggregator import aggregate_all_signals
 from pipeline.congress_trades import (
     get_trades_for_ticker, get_trades_for_filer, get_filers,
-    compute_trade_stats, estimate_volume, get_ticker_summary,
+    compute_trade_stats, estimate_volume,
 )
 
 st.set_page_config(page_title="Stock Analysis", layout="wide")
@@ -104,8 +104,7 @@ def load_market_context(t, p):
 def load_congress_trades(t):
     trades_df = get_trades_for_ticker(t)
     stats = compute_trade_stats(trades_df)
-    summary = get_ticker_summary(t)
-    return trades_df, stats, summary
+    return trades_df, stats
 
 
 @st.cache_data(ttl=3600)
@@ -1341,7 +1340,7 @@ if show_congress:
     st.header("Congressional Trading Activity")
     st.caption("Data from public STOCK Act disclosures. For informational and educational purposes only, not financial advice.")
 
-    congress_trades_df, congress_stats, ticker_summary = load_congress_trades(ticker)
+    congress_trades_df, congress_stats = load_congress_trades(ticker)
 
     if congress_stats["total"] == 0:
         st.info(f"No congressional trades found for {ticker}.")
@@ -1364,11 +1363,11 @@ if show_congress:
             st.markdown(buy_bar, unsafe_allow_html=True)
 
         # Party breakdown
+        party_colors = {"D": BLUE, "R": RED, "I": YELLOW}
+        party_names = {"D": "Democrat", "R": "Republican", "I": "Independent"}
         if congress_stats["by_party"]:
             st.subheader("By Party")
             party_cols = st.columns(len(congress_stats["by_party"]))
-            party_colors = {"D": BLUE, "R": RED, "I": YELLOW}
-            party_names = {"D": "Democrat", "R": "Republican", "I": "Independent"}
             for i, (party, pdata) in enumerate(sorted(congress_stats["by_party"].items())):
                 color = party_colors.get(party, GREY)
                 name = party_names.get(party, party)

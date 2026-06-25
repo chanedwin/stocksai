@@ -30,7 +30,7 @@ def get_filers():
 def get_trades_for_ticker(ticker: str) -> pd.DataFrame:
     try:
         data = _fetch_json(f"ticker/{ticker.upper()}.json")
-    except requests.HTTPError:
+    except (requests.HTTPError, requests.ConnectionError, requests.Timeout):
         return pd.DataFrame()
     trades = data.get("trades", [])
     if not trades:
@@ -44,7 +44,7 @@ def get_trades_for_ticker(ticker: str) -> pd.DataFrame:
 def get_trades_for_filer(filer_id: str) -> dict:
     try:
         data = _fetch_json(f"filer/{filer_id}.json")
-    except requests.HTTPError:
+    except (requests.HTTPError, requests.ConnectionError, requests.Timeout):
         return {"filer": {}, "trades": []}
     filer = data.get("filer", {})
     trades = data.get("trades", [])
@@ -60,15 +60,10 @@ def get_trades_for_filer(filer_id: str) -> dict:
 def get_ticker_summary(ticker: str) -> dict:
     try:
         tickers = _fetch_json("tickers.json")
-    except requests.HTTPError:
+    except (requests.HTTPError, requests.ConnectionError, requests.Timeout):
         return {}
     match = [t for t in tickers if t.get("ticker") == ticker.upper()]
     return match[0] if match else {}
-
-
-def get_top_traders(limit=20) -> pd.DataFrame:
-    df = get_filers()
-    return df.head(limit)
 
 
 def compute_trade_stats(trades_df: pd.DataFrame) -> dict:
