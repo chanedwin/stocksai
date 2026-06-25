@@ -6,3 +6,4 @@ from .pattern_detection import detect_support_resistance, detect_signals, comput
 from .market_context import get_peer_comparison, get_macro_indicators, get_analyst_data, get_earnings_impact
 from .earnings_analysis import compute_growth_trends, compute_margin_trends, compute_revenue_composition
 from .signal_aggregator import aggregate_all_signals
+from .congress_trades import get_trades_for_ticker, get_trades_for_filer, get_filers, compute_trade_stats

@@ -15,6 +15,7 @@ pipeline/
   pattern_detection.py      Support/resistance, trading signals, trend scores
   market_context.py         Peer comparison, macro indicators, analyst data, earnings impact
   earnings_analysis.py      Revenue/earnings growth trends, margin analysis, P&L composition
+  congress_trades.py        Congressional stock trade data from STOCK Act disclosures
 
 dashboard/
   app.py                    Streamlit app that ties the pipeline together

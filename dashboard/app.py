@@ -18,6 +18,10 @@ from pipeline.pattern_detection import detect_support_resistance, detect_signals
 from pipeline.market_context import get_peer_comparison, get_macro_indicators, get_analyst_data, get_earnings_impact
 from pipeline.earnings_analysis import compute_growth_trends, compute_margin_trends, compute_revenue_composition
 from pipeline.signal_aggregator import aggregate_all_signals
+from pipeline.congress_trades import (
+    get_trades_for_ticker, get_trades_for_filer, get_filers,
+    compute_trade_stats, estimate_volume, get_ticker_summary,
+)
 
 st.set_page_config(page_title="Stock Analysis", layout="wide")
 
@@ -69,6 +73,7 @@ ta_overlays = st.sidebar.multiselect(
 )
 show_flow = st.sidebar.checkbox("Show Money Flow", value=True)
 show_market = st.sidebar.checkbox("Show Market Context", value=True)
+show_congress = st.sidebar.checkbox("Show Congress Trades", value=True)
 
 
 @st.cache_data(ttl=900)
@@ -93,6 +98,24 @@ def load_market_context(t, p):
     macro = get_macro_indicators("2y")
     analyst = get_analyst_data(t)
     return peers, macro, analyst
+
+
+@st.cache_data(ttl=3600)
+def load_congress_trades(t):
+    trades_df = get_trades_for_ticker(t)
+    stats = compute_trade_stats(trades_df)
+    summary = get_ticker_summary(t)
+    return trades_df, stats, summary
+
+
+@st.cache_data(ttl=3600)
+def load_filer_trades(filer_id):
+    return get_trades_for_filer(filer_id)
+
+
+@st.cache_data(ttl=3600)
+def load_filers_index():
+    return get_filers()
 
 
 @st.cache_data(ttl=900)
@@ -1312,6 +1335,181 @@ if stmt_tab_names:
                       else x)
             )
             st.dataframe(display_df, use_container_width=True)
+
+# --- Congress & Politician Trades ---
+if show_congress:
+    st.header("Congressional Trading Activity")
+    st.caption("Data from public STOCK Act disclosures. For informational and educational purposes only, not financial advice.")
+
+    congress_trades_df, congress_stats, ticker_summary = load_congress_trades(ticker)
+
+    if congress_stats["total"] == 0:
+        st.info(f"No congressional trades found for {ticker}.")
+    else:
+        # Summary metrics
+        cc1, cc2, cc3, cc4, cc5 = st.columns(5)
+        cc1.metric("Total Trades", congress_stats["total"])
+        cc2.metric("Purchases", congress_stats["purchases"])
+        cc3.metric("Sales", congress_stats["sales"])
+        cc4.metric("Unique Filers", congress_stats["unique_filers"])
+        cc5.metric("Latest Trade", congress_stats["latest_date"] or "N/A")
+
+        # Buy/sell ratio bar
+        if congress_stats["purchases"] + congress_stats["sales"] > 0:
+            buy_pct = congress_stats["purchases"] / (congress_stats["purchases"] + congress_stats["sales"]) * 100
+            sell_pct = 100 - buy_pct
+            buy_bar = f'<div style="display:flex;height:24px;border-radius:4px;overflow:hidden;margin:8px 0">'
+            buy_bar += f'<div style="width:{buy_pct:.0f}%;background:{GREEN};display:flex;align-items:center;justify-content:center;color:white;font-size:0.8em;font-weight:600">Buy {buy_pct:.0f}%</div>'
+            buy_bar += f'<div style="width:{sell_pct:.0f}%;background:{RED};display:flex;align-items:center;justify-content:center;color:white;font-size:0.8em;font-weight:600">Sell {sell_pct:.0f}%</div></div>'
+            st.markdown(buy_bar, unsafe_allow_html=True)
+
+        # Party breakdown
+        if congress_stats["by_party"]:
+            st.subheader("By Party")
+            party_cols = st.columns(len(congress_stats["by_party"]))
+            party_colors = {"D": BLUE, "R": RED, "I": YELLOW}
+            party_names = {"D": "Democrat", "R": "Republican", "I": "Independent"}
+            for i, (party, pdata) in enumerate(sorted(congress_stats["by_party"].items())):
+                color = party_colors.get(party, GREY)
+                name = party_names.get(party, party)
+                party_cols[i].markdown(
+                    f'<div style="text-align:center;border:1px solid {color};border-radius:8px;padding:12px">'
+                    f'<div style="color:{color};font-weight:600;font-size:1.1em">{name}</div>'
+                    f'<div style="font-size:1.5em;font-weight:700">{pdata["total"]}</div>'
+                    f'<div style="font-size:0.85em;color:#aaa">'
+                    f'<span style="color:{GREEN}">{pdata["purchases"]} buys</span> / '
+                    f'<span style="color:{RED}">{pdata["sales"]} sells</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        # Timeline chart
+        st.subheader("Trade Timeline")
+        timeline_df = congress_trades_df.copy()
+        if not timeline_df.empty and "transaction_date" in timeline_df.columns:
+            timeline_df["is_purchase"] = timeline_df["transaction_type"].str.contains("Purchase", case=False, na=False)
+            timeline_df["est_amount"] = timeline_df.apply(estimate_volume, axis=1)
+
+            fig_timeline = go.Figure()
+            buys = timeline_df[timeline_df["is_purchase"]]
+            sells = timeline_df[~timeline_df["is_purchase"]]
+
+            if not buys.empty:
+                fig_timeline.add_trace(go.Scatter(
+                    x=buys["transaction_date"],
+                    y=buys["est_amount"],
+                    mode="markers",
+                    name="Purchase",
+                    marker=dict(color=GREEN, size=10, symbol="triangle-up"),
+                    text=buys.apply(
+                        lambda r: f"{r.get('filer_name', 'Unknown')}<br>{r.get('amount_range_label', '')}",
+                        axis=1,
+                    ),
+                    hovertemplate="%{text}<br>%{x}<extra></extra>",
+                ))
+            if not sells.empty:
+                fig_timeline.add_trace(go.Scatter(
+                    x=sells["transaction_date"],
+                    y=sells["est_amount"],
+                    mode="markers",
+                    name="Sale",
+                    marker=dict(color=RED, size=10, symbol="triangle-down"),
+                    text=sells.apply(
+                        lambda r: f"{r.get('filer_name', 'Unknown')}<br>{r.get('amount_range_label', '')}",
+                        axis=1,
+                    ),
+                    hovertemplate="%{text}<br>%{x}<extra></extra>",
+                ))
+            fig_timeline.update_layout(
+                height=350,
+                margin=dict(l=40, r=20, t=30, b=40),
+                yaxis_title="Estimated Amount ($)",
+                xaxis_title="Transaction Date",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_timeline, use_container_width=True)
+
+        # Recent trades table
+        st.subheader("Recent Trades")
+        display_cols = ["transaction_date", "filer_name", "party", "transaction_type",
+                        "amount_range_label", "owner", "asset_type", "days_to_file"]
+        available_cols = [c for c in display_cols if c in congress_trades_df.columns]
+        if available_cols:
+            show_df = congress_trades_df[available_cols].head(50).copy()
+            rename_map = {
+                "transaction_date": "Date",
+                "filer_name": "Politician",
+                "party": "Party",
+                "transaction_type": "Type",
+                "amount_range_label": "Amount",
+                "owner": "Owner",
+                "asset_type": "Asset",
+                "days_to_file": "Days to File",
+            }
+            show_df = show_df.rename(columns={k: v for k, v in rename_map.items() if k in show_df.columns})
+            if "Date" in show_df.columns:
+                show_df["Date"] = show_df["Date"].dt.strftime("%Y-%m-%d")
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
+
+        # Individual politician lookup
+        st.subheader("Politician Lookup")
+        try:
+            filers_index = load_filers_index()
+            filer_options = filers_index["full_name"].tolist()[:100]
+            selected_filer_name = st.selectbox("Select a politician", [""] + filer_options)
+            if selected_filer_name:
+                filer_row = filers_index[filers_index["full_name"] == selected_filer_name].iloc[0]
+                filer_id = filer_row["id"]
+                filer_data = load_filer_trades(filer_id)
+                filer_info = filer_data["filer"]
+                filer_trades = filer_data["trades"]
+
+                party_label = party_names.get(filer_info.get("party", ""), filer_info.get("party", ""))
+                state_label = filer_info.get("state", "")
+                office_label = filer_info.get("office", "")
+                chamber_label = filer_info.get("chamber", "").title()
+
+                st.markdown(
+                    f"**{selected_filer_name}** ({party_label}, {state_label}) "
+                    f"| {chamber_label} | {office_label}"
+                )
+
+                if isinstance(filer_trades, pd.DataFrame) and not filer_trades.empty:
+                    fc1, fc2, fc3 = st.columns(3)
+                    fc1.metric("Total Trades", len(filer_trades))
+                    buys_count = filer_trades["transaction_type"].str.contains("Purchase", case=False, na=False).sum()
+                    sells_count = filer_trades["transaction_type"].str.contains("Sale", case=False, na=False).sum()
+                    fc2.metric("Purchases", int(buys_count))
+                    fc3.metric("Sales", int(sells_count))
+
+                    filer_display_cols = ["transaction_date", "ticker", "transaction_type",
+                                         "amount_range_label", "asset_type", "ret_since"]
+                    avail = [c for c in filer_display_cols if c in filer_trades.columns]
+                    filer_show = filer_trades[avail].head(30).copy()
+                    filer_rename = {
+                        "transaction_date": "Date",
+                        "ticker": "Ticker",
+                        "transaction_type": "Type",
+                        "amount_range_label": "Amount",
+                        "asset_type": "Asset",
+                        "ret_since": "Return Since (%)",
+                    }
+                    filer_show = filer_show.rename(columns={k: v for k, v in filer_rename.items() if k in filer_show.columns})
+                    if "Date" in filer_show.columns:
+                        filer_show["Date"] = pd.to_datetime(filer_show["Date"]).dt.strftime("%Y-%m-%d")
+                    if "Return Since (%)" in filer_show.columns:
+                        filer_show["Return Since (%)"] = filer_show["Return Since (%)"].apply(
+                            lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A"
+                        )
+                    st.dataframe(filer_show, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No trades found for this politician.")
+        except Exception:
+            st.warning("Could not load politician index. The data source may be temporarily unavailable.")
+
 
 # Earnings
 st.header("Earnings History")

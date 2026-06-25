@@ -173,8 +173,34 @@
 
 ---
 
+<!-- SECTION: congress-trades -->
+## 9. Congressional Trades
+
+**Module:** `pipeline/congress_trades.py`
+**Source:** kadoa-org/congress-trading-monitor GitHub dataset (static JSON files from parsed STOCK Act disclosures). No API key required.
+
+| Function | Input | Output | Notes |
+|----------|-------|--------|-------|
+| `get_filers()` | none | DataFrame of 432 politicians with trade_count, party, chamber, state, office | Sorted by trade_count descending. Cached in memory. |
+| `get_trades_for_ticker(ticker)` | ticker str | DataFrame of all congressional trades in that stock | Columns: transaction_date, filer_name, party, transaction_type, amount_range_label, ret_since, etc. |
+| `get_trades_for_filer(filer_id)` | filer_id str (e.g. "house_nancy_pelosi") | dict with "filer" (metadata) and "trades" (DataFrame) | Returns empty trades DataFrame if filer not found. |
+| `get_ticker_summary(ticker)` | ticker str | dict with trade_count, filer_count, purchases, sales, est_volume | Empty dict if ticker has no congressional trades. |
+| `compute_trade_stats(trades_df)` | DataFrame from get_trades_for_ticker | dict with total, purchases, sales, unique_filers, by_party, by_chamber | Used by dashboard for summary cards and party breakdown. |
+| `estimate_volume(row)` | single trade row (dict-like) | float estimated dollar amount | Midpoint of amount_range_low and amount_range_high. |
+| `get_top_traders(limit)` | int (default 20) | DataFrame of top N politicians by trade count | Convenience wrapper over get_filers(). |
+
+**Data fields per trade:** id, source_id, transaction_date, filing_date, owner (self/SP/JT/DC), ticker, asset_name, asset_type (ST/OP), transaction_type (Purchase/Sale/Sale (Full)/Sale (Partial)/Exchange), amount_range_low, amount_range_high, amount_range_label, days_to_file, is_late, comment, filer_name, party, chamber, state, ret_since, excess_since, doc_url.
+
+**Gotchas:**
+- Data is from a third-party GitHub repo that parses official STOCK Act filings. Updates depend on that project's ingestion schedule.
+- The `_cache` dict uses a 60-minute TTL. Streamlit also caches at 3600s (1 hour) for congress data.
+- Owner codes: SP=Spouse, JT=Joint, DC=Dependent Child, null=Self.
+- Asset type: ST=Stock, OP=Options.
+
+---
+
 <!-- SECTION: dashboard -->
-## 9. Dashboard
+## 10. Dashboard
 
 **Module:** `dashboard/app.py`
 **Framework:** Streamlit + Plotly
@@ -186,10 +212,11 @@
 4. Money Flow: ownership pie, insider summary, short interest, options flow, institutional holders, insider transactions (color-coded Sale/Purchase/Gift)
 5. Market Context (toggle): analyst consensus, peer comparison, macro indicators, earnings impact
 6. Earnings Breakdown: revenue composition waterfall, quarterly growth cards, margin trends
-7. Fundamental Analysis: ratio cards by category
-8. Financial Statements: tabbed annual/quarterly views
-9. Earnings History table
-10. Company description
+7. Congressional Trading Activity (toggle): summary metrics, buy/sell bar, party breakdown, timeline scatter, recent trades table, politician lookup with per-filer trade history
+8. Fundamental Analysis: ratio cards by category
+9. Financial Statements: tabbed annual/quarterly views
+10. Earnings History table
+11. Company description
 
 **Caching:** `@st.cache_data(ttl=900)` on data loaders. Signal analysis always uses 5-year data regardless of period selector.
 
