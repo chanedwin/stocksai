@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 def compute_growth_trends(fundamentals: dict) -> dict:
