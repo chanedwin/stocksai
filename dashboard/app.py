@@ -15,6 +15,8 @@ from pipeline.flow_analysis import (
     get_insider_activity, get_short_interest, get_options_flow,
 )
 from pipeline.pattern_detection import detect_support_resistance, detect_signals, compute_trend_scores
+from pipeline.market_context import get_peer_comparison, get_macro_indicators, get_analyst_data, get_earnings_impact
+from pipeline.earnings_analysis import compute_growth_trends, compute_margin_trends, compute_revenue_composition
 
 st.set_page_config(page_title="Stock Analysis", layout="wide")
 
@@ -65,6 +67,7 @@ ta_overlays = st.sidebar.multiselect(
     default=["SMA 50", "SMA 200", "Support/Resistance"],
 )
 show_flow = st.sidebar.checkbox("Show Money Flow", value=True)
+show_market = st.sidebar.checkbox("Show Market Context", value=True)
 
 
 @st.cache_data(ttl=900)
@@ -81,6 +84,14 @@ def load_flow_data(t):
     insider = get_insider_activity(t)
     options = get_options_flow(t)
     return inst, mf, insider, options
+
+
+@st.cache_data(ttl=900)
+def load_market_context(t, p):
+    peers = get_peer_comparison(t, p)
+    macro = get_macro_indicators("2y")
+    analyst = get_analyst_data(t)
+    return peers, macro, analyst
 
 
 with st.spinner("Fetching data..."):
@@ -587,6 +598,392 @@ if show_flow:
         cols_to_show = [c for c in ["Start Date", "Insider", "Position", "Transaction", "Shares", "Value"] if c in display_txn.columns]
         if cols_to_show:
             st.dataframe(display_txn[cols_to_show], use_container_width=True, hide_index=True)
+
+
+# --- Market Context ---
+if show_market:
+    st.header("Market Context & Drivers")
+
+    with st.spinner("Loading market context..."):
+        peers, macro, analyst = load_market_context(ticker, period)
+
+    # Analyst Consensus
+    st.subheader("Analyst Consensus")
+    targets = analyst.get("price_targets")
+    recs = analyst.get("recommendations")
+    eps_est = analyst.get("eps_estimate")
+    rev_est = analyst.get("revenue_estimate")
+
+    if targets:
+        an_col1, an_col2 = st.columns([1, 2])
+        with an_col1:
+            t_current = targets.get("current", current_price)
+            t_low = targets.get("low", 0)
+            t_mean = targets.get("mean", 0)
+            t_median = targets.get("median", 0)
+            t_high = targets.get("high", 0)
+
+            upside = ((t_mean - t_current) / t_current * 100) if t_current else 0
+            upside_color = GREEN if upside > 0 else RED
+
+            st.markdown(
+                f'<div style="text-align:center;padding:16px;border:1px solid {upside_color}33;border-radius:8px;background:{upside_color}11">'
+                f'<div style="color:#aaa;font-size:0.75em">Mean Price Target</div>'
+                f'<div style="font-size:2em;font-weight:700">${t_mean:.0f}</div>'
+                f'<div style="color:{upside_color};font-size:1em;font-weight:600">{upside:+.1f}% upside</div>'
+                f'<div style="color:#aaa;font-size:0.8em;margin-top:8px">Low ${t_low:.0f} | Median ${t_median:.0f} | High ${t_high:.0f}</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        with an_col2:
+            if recs is not None and not recs.empty:
+                latest_rec = recs.iloc[0]
+                rec_data = {
+                    "Strong Buy": int(latest_rec.get("strongBuy", 0)),
+                    "Buy": int(latest_rec.get("buy", 0)),
+                    "Hold": int(latest_rec.get("hold", 0)),
+                    "Sell": int(latest_rec.get("sell", 0)),
+                    "Strong Sell": int(latest_rec.get("strongSell", 0)),
+                }
+                rec_colors = [GREEN, "#66bb6a", YELLOW, "#ef9a9a", RED]
+
+                fig_rec = go.Figure(data=[go.Bar(
+                    x=list(rec_data.keys()),
+                    y=list(rec_data.values()),
+                    marker_color=rec_colors,
+                    text=list(rec_data.values()),
+                    textposition="auto",
+                )])
+                fig_rec.update_layout(
+                    height=250, margin=dict(l=20, r=20, t=30, b=20),
+                    title="Analyst Recommendations",
+                    yaxis_title="Count",
+                )
+                st.plotly_chart(fig_rec, use_container_width=True)
+
+    # EPS & Revenue estimates
+    if eps_est is not None and not eps_est.empty:
+        est_col1, est_col2 = st.columns(2)
+        with est_col1:
+            st.markdown("**EPS Estimates**")
+            display_eps = eps_est[["avg", "low", "high", "yearAgoEps", "growth"]].copy()
+            display_eps["growth"] = display_eps["growth"].apply(
+                lambda x: f"{x*100:+.1f}%" if pd.notna(x) else "N/A"
+            )
+            display_eps.columns = ["Avg", "Low", "High", "Year Ago", "Growth"]
+            st.dataframe(display_eps, use_container_width=True)
+
+        with est_col2:
+            if rev_est is not None and not rev_est.empty:
+                st.markdown("**Revenue Estimates**")
+                display_rev = rev_est[["avg", "low", "high", "growth"]].copy()
+                display_rev["avg"] = display_rev["avg"].apply(lambda x: f"${x/1e9:.1f}B" if pd.notna(x) else "N/A")
+                display_rev["low"] = display_rev["low"].apply(lambda x: f"${x/1e9:.1f}B" if pd.notna(x) else "N/A")
+                display_rev["high"] = display_rev["high"].apply(lambda x: f"${x/1e9:.1f}B" if pd.notna(x) else "N/A")
+                display_rev["growth"] = display_rev["growth"].apply(
+                    lambda x: f"{x*100:+.1f}%" if pd.notna(x) else "N/A"
+                )
+                display_rev.columns = ["Avg", "Low", "High", "Growth"]
+                st.dataframe(display_rev, use_container_width=True)
+
+    # Peer Comparison
+    if peers.get("available"):
+        st.subheader("Peer Comparison")
+
+        peer_col1, peer_col2 = st.columns([2, 1])
+
+        with peer_col1:
+            cum_ret = peers["cumulative_returns"]
+            names = peers["names"]
+            fig_peers = go.Figure()
+
+            for col in cum_ret.columns:
+                label = names.get(col, col)
+                is_main = col == ticker
+                color_map = {
+                    ticker: BLUE, "SPY": GREY, "XLK": "#ab47bc",
+                    "AAPL": "#78909c", "MSFT": "#4caf50", "META": "#2196f3",
+                    "AMZN": "#ff9800", "NVDA": "#66bb6a",
+                }
+                fig_peers.add_trace(go.Scatter(
+                    x=cum_ret.index, y=cum_ret[col] * 100,
+                    name=label,
+                    line=dict(
+                        color=color_map.get(col, GREY),
+                        width=3 if is_main else 1.5,
+                        dash=None if is_main else ("dash" if col in ("SPY", "XLK") else None),
+                    ),
+                    opacity=1.0 if is_main else 0.7,
+                ))
+
+            fig_peers.update_layout(
+                height=400,
+                title="Cumulative Returns",
+                yaxis_title="Return (%)",
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=60, r=20, t=40, b=20),
+            )
+            fig_peers.add_hline(y=0, line_dash="dot", line_color=GREY, opacity=0.3)
+            st.plotly_chart(fig_peers, use_container_width=True)
+
+        with peer_col2:
+            st.markdown("**Correlation with " + ticker + "**")
+            corr_data = peers["correlation"]
+            names = peers["names"]
+            for sym, corr_val in sorted(corr_data.items(), key=lambda x: abs(x[1]), reverse=True):
+                label = names.get(sym, sym)
+                if corr_val > 0.5:
+                    color = GREEN
+                elif corr_val > 0.3:
+                    color = YELLOW
+                elif corr_val < 0:
+                    color = RED
+                else:
+                    color = GREY
+                bar_width = abs(corr_val) * 100
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;padding:4px 0;border-bottom:1px solid #333">'
+                    f'<span style="width:80px">{label}</span>'
+                    f'<div style="flex:1;background:#33333366;border-radius:4px;height:18px;margin:0 8px">'
+                    f'<div style="width:{bar_width}%;background:{color};height:100%;border-radius:4px"></div></div>'
+                    f'<span style="color:{color};font-weight:600;width:50px;text-align:right">{corr_val:.2f}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("")
+            st.markdown("**Period Returns**")
+            ret_data = peers["period_returns"]
+            for sym, ret_val in sorted(ret_data.items(), key=lambda x: x[1], reverse=True):
+                label = names.get(sym, sym)
+                color = GREEN if ret_val > 0 else RED
+                is_main = sym == ticker
+                weight = "700" if is_main else "400"
+                st.markdown(
+                    f'<div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:{weight}">'
+                    f'<span>{">> " if is_main else ""}{label}</span>'
+                    f'<span style="color:{color}">{ret_val*100:+.1f}%</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+        # Relative strength vs SPY
+        rel = peers.get("relative_strength_vs_spy")
+        if rel is not None and not rel.empty:
+            fig_rel = go.Figure()
+            fig_rel.add_trace(go.Scatter(
+                x=rel.index, y=rel * 100,
+                fill="tozeroy",
+                fillcolor=f"rgba(38,166,154,0.15)",
+                line=dict(color=BLUE, width=2),
+                name=f"{ticker} vs SPY",
+            ))
+            fig_rel.add_hline(y=0, line_dash="dash", line_color=GREY, opacity=0.5)
+            fig_rel.update_layout(
+                height=250, title=f"Relative Strength: {ticker} vs S&P 500",
+                yaxis_title="Excess Return (%)",
+                margin=dict(l=60, r=20, t=40, b=20),
+            )
+            st.plotly_chart(fig_rel, use_container_width=True)
+
+    # Macro Indicators
+    if macro.get("available"):
+        st.subheader("Macro Indicators")
+        macro_data = macro["data"]
+
+        fig_macro = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+            subplot_titles=("10Y Treasury Yield (%)", "VIX (Fear Index)"),
+            row_heights=[0.5, 0.5],
+        )
+
+        if "10Y Treasury" in macro_data.columns:
+            fig_macro.add_trace(
+                go.Scatter(x=macro_data.index, y=macro_data["10Y Treasury"],
+                           name="10Y Treasury", line=dict(color=YELLOW, width=1.5)),
+                row=1, col=1,
+            )
+
+        if "VIX" in macro_data.columns:
+            vix = macro_data["VIX"]
+            fig_macro.add_trace(
+                go.Scatter(x=vix.index, y=vix, name="VIX",
+                           line=dict(color="#ab47bc", width=1.5)),
+                row=2, col=1,
+            )
+            fig_macro.add_hline(y=20, line_dash="dash", line_color=YELLOW, opacity=0.5, row=2, col=1,
+                               annotation_text="Normal", annotation_font_color=YELLOW)
+            fig_macro.add_hline(y=30, line_dash="dash", line_color=RED, opacity=0.5, row=2, col=1,
+                               annotation_text="Fear", annotation_font_color=RED)
+
+        fig_macro.update_layout(
+            height=450, showlegend=False,
+            margin=dict(l=60, r=20, t=40, b=20),
+        )
+        st.plotly_chart(fig_macro, use_container_width=True)
+
+    # Earnings Impact
+    st.subheader("Earnings Impact Analysis")
+    earnings_impact = get_earnings_impact(ticker, price_df)
+    if not earnings_impact.empty:
+        ei_col1, ei_col2 = st.columns([2, 1])
+
+        with ei_col1:
+            fig_ei = go.Figure()
+            colors = [GREEN if s and s > 0 else (RED if s and s < 0 else GREY)
+                      for s in earnings_impact["surprise_pct"]]
+            fig_ei.add_trace(go.Bar(
+                x=earnings_impact["date"],
+                y=earnings_impact["day_return_pct"],
+                marker_color=colors,
+                name="Day Return",
+                text=[f"{r:+.1f}%" for r in earnings_impact["day_return_pct"]],
+                textposition="outside",
+            ))
+            fig_ei.update_layout(
+                height=300, title="Stock Price Move on Earnings Day",
+                yaxis_title="Return (%)",
+                margin=dict(l=60, r=20, t=40, b=20),
+            )
+            fig_ei.add_hline(y=0, line_color=GREY, opacity=0.3)
+            st.plotly_chart(fig_ei, use_container_width=True)
+
+        with ei_col2:
+            st.markdown("**Earnings History**")
+            for _, row in earnings_impact.iterrows():
+                surprise = row["surprise_pct"]
+                ret = row["day_return_pct"]
+                if surprise is not None:
+                    s_color = GREEN if surprise > 0 else RED
+                    s_str = f'{surprise:+.1f}% {"beat" if surprise > 0 else "miss"}'
+                else:
+                    s_color = GREY
+                    s_str = "N/A"
+                r_color = GREEN if ret > 0 else RED
+                eps_str = f"${row['eps_actual']:.2f}" if row["eps_actual"] is not None else "N/A"
+                st.markdown(
+                    f'<div style="padding:6px 0;border-bottom:1px solid #333">'
+                    f'<div style="font-weight:600">{row["date"]}</div>'
+                    f'<div style="display:flex;justify-content:space-between">'
+                    f'<span>EPS: {eps_str}</span>'
+                    f'<span style="color:{s_color}">{s_str}</span>'
+                    f'<span style="color:{r_color}">{ret:+.1f}%</span></div></div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.info("No earnings impact data available for this period.")
+
+
+# --- Earnings Breakdown ---
+st.header("Earnings & Revenue Breakdown")
+
+growth_trends = compute_growth_trends(fundamentals)
+margin_trends = compute_margin_trends(fundamentals)
+rev_composition = compute_revenue_composition(fundamentals)
+
+# Revenue composition waterfall
+if rev_composition.get("available"):
+    st.subheader(f"Where the Money Goes ({rev_composition['period']})")
+    total_rev = rev_composition["total_revenue"]
+    comp = rev_composition["components"]
+
+    waterfall_items = [
+        ("Revenue", total_rev, BLUE),
+        ("Cost of Revenue", -comp.get("Cost of Revenue", {}).get("value", 0), RED),
+        ("Gross Profit", comp.get("Gross Profit", {}).get("value", 0), GREEN),
+        ("R&D", -comp.get("R&D Spend", {}).get("value", 0), YELLOW),
+        ("SG&A", -comp.get("SG&A", {}).get("value", 0), YELLOW),
+        ("Operating Income", comp.get("Operating Income", {}).get("value", 0), GREEN),
+    ]
+
+    wf_labels = [w[0] for w in waterfall_items]
+    wf_values = [w[1] for w in waterfall_items]
+    wf_colors = [w[2] for w in waterfall_items]
+    wf_pcts = [abs(v) / total_rev * 100 for v in wf_values]
+
+    fig_wf = go.Figure(go.Bar(
+        x=wf_labels,
+        y=[abs(v) / 1e9 for v in wf_values],
+        marker_color=wf_colors,
+        text=[f"${abs(v)/1e9:.1f}B\n({p:.0f}%)" for v, p in zip(wf_values, wf_pcts)],
+        textposition="outside",
+    ))
+    fig_wf.update_layout(
+        height=350,
+        yaxis_title="$ Billions",
+        margin=dict(l=60, r=20, t=20, b=20),
+    )
+    st.plotly_chart(fig_wf, use_container_width=True)
+
+# Growth trends table
+qt = growth_trends.get("quarterly")
+if qt and qt.get("rows"):
+    st.subheader("Quarterly Growth")
+
+    growth_cards = []
+    for row in qt["rows"]:
+        yoy = row["yoy_growth"]
+        qoq = row["seq_growth"]
+        latest = row["latest"]
+
+        if abs(latest) >= 1e9:
+            val_str = f"${latest/1e9:.1f}B"
+        elif abs(latest) >= 1e6:
+            val_str = f"${latest/1e6:.0f}M"
+        elif row["metric"] == "Diluted EPS":
+            val_str = f"${latest:.2f}"
+        else:
+            val_str = f"${latest:,.0f}"
+
+        yoy_color = GREEN if yoy and yoy > 0 else (RED if yoy and yoy < 0 else GREY)
+        qoq_color = GREEN if qoq and qoq > 0 else (RED if qoq and qoq < 0 else GREY)
+        yoy_str = f"{yoy:+.1f}%" if yoy is not None else "N/A"
+        qoq_str = f"{qoq:+.1f}%" if qoq is not None else "N/A"
+
+        growth_cards.append(
+            f'<div style="padding:10px;border:1px solid #33333366;border-radius:8px">'
+            f'<div style="color:#aaa;font-size:0.72em">{row["metric"]}</div>'
+            f'<div style="font-size:1.2em;font-weight:600">{val_str}</div>'
+            f'<div style="display:flex;gap:12px;margin-top:4px">'
+            f'<span style="color:{yoy_color};font-size:0.85em">YoY {yoy_str}</span>'
+            f'<span style="color:{qoq_color};font-size:0.85em">QoQ {qoq_str}</span>'
+            f'</div></div>'
+        )
+
+    cols_count = min(len(growth_cards), 4)
+    card_html = '<div style="display:grid;grid-template-columns:' + ' '.join(['1fr'] * cols_count) + ';gap:8px">'
+    card_html += "".join(growth_cards) + "</div>"
+    st.markdown(card_html, unsafe_allow_html=True)
+
+# Margin trends chart
+qm = margin_trends.get("quarterly")
+if qm and qm.get("margins"):
+    st.subheader("Margin Trends")
+
+    fig_margins = go.Figure()
+    margin_colors = {
+        "Gross Margin": GREEN,
+        "Operating Margin": BLUE,
+        "Net Margin": YELLOW,
+        "R&D % Revenue": "#ab47bc",
+    }
+
+    for name, vals in qm["margins"].items():
+        fig_margins.add_trace(go.Scatter(
+            x=qm["periods"],
+            y=vals,
+            name=name,
+            line=dict(color=margin_colors.get(name, GREY), width=2),
+            mode="lines+markers",
+        ))
+
+    fig_margins.update_layout(
+        height=350,
+        yaxis_title="% of Revenue",
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=60, r=20, t=20, b=20),
+    )
+    st.plotly_chart(fig_margins, use_container_width=True)
 
 
 # --- Fundamental Analysis ---

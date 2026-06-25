@@ -3,3 +3,4 @@ from .technical_analysis import compute_indicators
 from .fundamental_analysis import compute_ratios, get_financial_statements
 from .flow_analysis import get_ownership_breakdown, get_institutional_holders, get_short_interest, get_options_flow
 from .pattern_detection import detect_support_resistance, detect_signals, compute_trend_scores
+from .market_context import get_peer_comparison, get_macro_indicators, get_analyst_data, get_earnings_impact
