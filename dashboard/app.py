@@ -827,14 +827,52 @@ if show_flow:
     transactions = insider_data.get("transactions")
     if transactions is not None and not transactions.empty:
         st.subheader("Recent Insider Transactions")
-        display_txn = transactions.head(10).copy()
+        display_txn = transactions.head(15).copy()
+
+        def _parse_txn_type(text):
+            t = str(text).lower()
+            if "sale" in t:
+                return "Sale"
+            if "purchase" in t or "buy" in t:
+                return "Purchase"
+            if "gift" in t:
+                return "Gift"
+            if "exercise" in t:
+                return "Exercise"
+            return "Other"
+
+        display_txn["Type"] = display_txn["Text"].apply(_parse_txn_type)
         if "Value" in display_txn.columns:
             display_txn["Value"] = display_txn["Value"].apply(
                 lambda x: f"${x:,.0f}" if isinstance(x, (int, float)) and x > 0 else str(x)
             )
-        cols_to_show = [c for c in ["Start Date", "Insider", "Position", "Transaction", "Shares", "Value"] if c in display_txn.columns]
-        if cols_to_show:
-            st.dataframe(display_txn[cols_to_show], use_container_width=True, hide_index=True)
+        if "Shares" in display_txn.columns:
+            display_txn["Shares"] = display_txn["Shares"].apply(
+                lambda x: f"{x:,.0f}" if isinstance(x, (int, float)) else str(x)
+            )
+
+        for _, row in display_txn.iterrows():
+            txn_type = row.get("Type", "Other")
+            if txn_type == "Sale":
+                txn_color = RED
+            elif txn_type == "Purchase":
+                txn_color = GREEN
+            else:
+                txn_color = GREY
+            date_str = str(row.get("Start Date", ""))[:10]
+            insider_name = row.get("Insider", "")
+            shares = row.get("Shares", "")
+            value = row.get("Value", "")
+            st.markdown(
+                f'<div style="display:flex;align-items:center;padding:5px 0;border-bottom:1px solid #33333333;gap:8px">'
+                f'<span style="background:{txn_color}22;color:{txn_color};border:1px solid {txn_color};border-radius:4px;padding:2px 8px;font-size:0.8em;font-weight:600;min-width:65px;text-align:center">{txn_type}</span>'
+                f'<span style="flex:1;font-weight:500">{insider_name}</span>'
+                f'<span style="color:#aaa;font-size:0.85em">{date_str}</span>'
+                f'<span style="font-weight:600;min-width:80px;text-align:right">{shares}</span>'
+                f'<span style="color:{txn_color};font-weight:600;min-width:90px;text-align:right">{value}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
 # --- Market Context ---
