@@ -223,17 +223,20 @@ with cat_col:
         bar_label = "Bullish" if score > 15 else ("Bearish" if score < -15 else "Neutral")
         bar_width = abs(score)
 
+        left_bar = ""
+        right_bar = ""
+        if score < 0:
+            left_bar = f'<div style="height:22px;background:{RED};border-radius:4px 0 0 4px;width:{bar_width}%"></div>'
+        if score >= 0:
+            right_bar = f'<div style="height:22px;background:{GREEN};border-radius:0 4px 4px 0;width:{bar_width}%"></div>'
+
         st.markdown(
             f'<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid #33333366">'
             f'<span style="width:110px;font-weight:600">{label}</span>'
             f'<div style="flex:1;display:flex;align-items:center">'
-            f'<div style="width:50%;display:flex;justify-content:flex-end">'
-            f'{"<div style=\"height:22px;background:" + RED + ";border-radius:4px 0 0 4px;width:" + str(bar_width) + "%\"></div>" if score < 0 else ""}'
-            f'</div>'
+            f'<div style="width:50%;display:flex;justify-content:flex-end">{left_bar}</div>'
             f'<div style="width:2px;height:28px;background:#666;margin:0 2px"></div>'
-            f'<div style="width:50%">'
-            f'{"<div style=\"height:22px;background:" + GREEN + ";border-radius:0 4px 4px 0;width:" + str(bar_width) + "%\"></div>" if score >= 0 else ""}'
-            f'</div></div>'
+            f'<div style="width:50%">{right_bar}</div></div>'
             f'<span style="width:80px;text-align:right;color:{bar_color};font-weight:600;font-size:0.9em">{bar_label}</span>'
             f'<span style="width:50px;text-align:right;color:#aaa;font-size:0.8em">{data["signal_count"]} sig</span>'
             f'</div>',
