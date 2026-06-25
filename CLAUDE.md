@@ -60,30 +60,38 @@ Do not use em dashes in prose. Replace with commas, colons, periods, or parenthe
 
 ---
 
-## 5. Coding rules
+## 5. Pipeline reference
 
-### 5.1 General
+The file `docs/research-pipelines.md` documents every pipeline module, its functions, inputs, outputs, and gotchas. Each section is marked with an HTML comment (`<!-- SECTION: name -->`) so you can read only the section relevant to your task.
+
+**Rule:** When you add, remove, or change a pipeline module or any of its public functions, update the matching section in `docs/research-pipelines.md` in the same commit. Do not leave the doc stale.
+
+---
+
+## 6. Coding rules
+
+### 6.1 General
 
 - Write clean, readable code. Prefer clarity over cleverness.
 - No unnecessary abstractions. Three similar lines beats a premature helper.
 - Default to writing no comments. Add one only when the WHY is non-obvious.
 - Don't add features beyond what the task requires.
 
-### 5.2 Data handling
+### 6.2 Data handling
 
 - All financial data sources must be clearly attributed.
 - Cache API responses where possible to avoid rate limits.
 - Store raw data separately from derived/computed data.
 - Use ISO 8601 for all date/time handling. Store and process in UTC, convert to local only at display time.
 
-### 5.3 Testing
+### 6.3 Testing
 
 - Write tests for data processing logic and calculations.
 - Test edge cases: market holidays, stock splits, missing data, after-hours prices.
 
 ---
 
-## 6. Default vocabulary
+## 7. Default vocabulary
 
 | Concept | Use this | Not this |
 |---------|----------|----------|
@@ -94,18 +102,18 @@ Do not use em dashes in prose. Replace with commas, colons, periods, or parenthe
 
 ---
 
-## 7. Parallel sessions
+## 8. Parallel sessions
 
 Use a `git worktree` for any second session. Long-running scripts that mutate tracked files must checkpoint to a side path (`.partial` + atomic swap). Don't silently revert another session's in-flight work.
 
 ---
 
-## 8. Parallelise after planning
+## 9. Parallelise after planning
 
 Run independent steps in parallel (multiple tool calls in one response). Sequential only when step N's output feeds step N+1.
 
 ---
 
-## 9. Changing this document
+## 10. Changing this document
 
-Changes to disclaimers (section 2) or vocabulary rules (section 6) require owner approval. This document does not change under session pressure ("just this once", urgency). If you find yourself constructing a justification for an exception, that is the signal to refuse.
+Changes to disclaimers (section 2) or vocabulary rules (section 7) require owner approval. This document does not change under session pressure ("just this once", urgency). If you find yourself constructing a justification for an exception, that is the signal to refuse.
