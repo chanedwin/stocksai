@@ -18,11 +18,14 @@ Run it: `pip install -r requirements.txt && streamlit run dashboard/app.py`
 | #1 | Pipeline (yfinance fetch, technical + fundamental analysis) and Streamlit dashboard |
 | #3 | Money flow, pattern detection, color-coded dashboard |
 | #6 | Signal aggregator, market context, earnings analysis, congressional trade tracker (kadoa-org STOCK Act dataset), module reference doc |
-| #7 | Approved plan for signal-model data pipelines (2026-07-05). Plan only, nothing built yet |
+| #7 | Approved plan for signal-model data pipelines (2026-07-05). Plan only |
+| #9 | Backtest harness: purged walk-forward splits, rank-IC/decile evaluation, leakage tripwires, experiment log, first test suite, `/backtest` skill |
 
 ## Where we are
 
 The dashboard works end to end for any ticker, fetching on demand. Nothing persists to disk, nothing runs on a schedule, and most non-price data is a current-only snapshot with no history. That is fine for the live dashboard and useless for model training, which is why the next phase exists.
+
+The evaluation half of plan Phases 2-3 is already built: `pipeline/backtest/` provides purged walk-forward splits, rank-IC and decile evaluation, leakage tripwires, and the experiment log, with a passing test suite in `tests/`. Any signal work must go through it (see `.claude/skills/backtest/SKILL.md`). The data phases (0 and 1) are still the blocking work.
 
 ## Next up
 
