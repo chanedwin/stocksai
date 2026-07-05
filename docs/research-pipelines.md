@@ -222,3 +222,31 @@
 **Caching:** `@st.cache_data(ttl=900)` on data loaders. Signal analysis always uses 5-year data regardless of period selector.
 
 **Color system:** GREEN=#26a69a, RED=#ef5350, YELLOW=#ffa726, BLUE=#42a5f5, GREY=#9e9e9e. For Plotly transparency, use `rgba()` format (Plotly rejects 8-digit hex).
+
+---
+
+<!-- SECTION: backtest -->
+## 11. Backtest Harness
+
+**Module:** `pipeline/backtest/` (`splits.py`, `evaluation.py`, `tripwires.py`, `experiments.py`)
+**Input contract:** a long panel DataFrame, one row per (date, ticker), with score/feature columns, a realized forward label (excess return), and `label_end_date` marking when the label window closes. Model-agnostic: it evaluates any score column, no fitting inside.
+
+| Function | Input | Output | Notes |
+|----------|-------|--------|-------|
+| `walk_forward_splits(panel, ..., min_train_periods, val_periods, test_periods, embargo)` | panel with date + label_end_date columns | list of `Split` (train/val/test row indexes, fold boundary dates) | Expanding window. A row trains only if `label_end_date < val_start - embargo`; NaT label ends never train. |
+| `rank_ic(panel, score_col, label_col)` | panel | per-date Spearman IC Series | Dates with fewer than 3 valid pairs or constant values are dropped. |
+| `summarize_ic(ic)` | IC Series | dict: mean_ic, std_ic, icir, t_stat, n_dates | |
+| `quantile_returns(panel, score_col, label_col, n_quantiles)` | panel | date x quantile mean-label DataFrame | Quantile 1 = lowest scores. |
+| `long_short_spread` / `hit_rate` / `monotonicity` | quantile DataFrame | Series / float / float | |
+| `top_quantile_turnover(panel, score_col, quantile)` | panel | per-date one-way turnover Series | Membership change of the top score bucket. |
+| `net_spread(spread, turnover, cost_bps_per_side)` | spread + turnover | net spread Series | Both legs trade the one-way turnover, each paying per-side costs (factor 4 on turnover x bps). |
+| `check_ic_alarm(mean_ic)` | float | raises `LeakageAlarm` above 0.10 | High IC is treated as a bug, not a win. |
+| `shuffled_labels(panel, label_col, seed)` / `check_shuffle_null(mean_ic)` | panel / float | Series / raises | Within-date label permutation: the leak-free null must score near zero. |
+| `check_knowledge_time(panel, knowledge_col)` | panel | raises on any knowledge_time after the row date | |
+| `config_hash` / `log_experiment` / `count_trials` / `clears_significance_bar` | config dict, metrics | 12-char hash / appended CSV row / int / bool | Every trial is logged; t > 3.0 bar per the plan. |
+
+**Gotchas:**
+- Purging is driven by `label_end_date`, not by the row date; build labels with their true window end.
+- The embargo is an extra gap subtracted from `val_start` when admitting training rows.
+- All evaluation belongs on test folds only; validation folds are for tuning.
+- Tests live in `tests/`; run `python -m pytest tests/`. The purge test is mutation-verified (disabling purging fails it).
