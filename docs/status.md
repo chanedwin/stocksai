@@ -16,8 +16,8 @@ Run it: `pip install -r requirements.txt && streamlit run dashboard/app.py`
 | PR | What |
 |---|---|
 | #1 | Pipeline (yfinance fetch, technical + fundamental analysis) and Streamlit dashboard |
-| #3 | Money flow, pattern detection, signal aggregator, color-coded dashboard |
-| #6 | Congressional trade tracker (kadoa-org STOCK Act dataset) |
+| #3 | Money flow, pattern detection, color-coded dashboard |
+| #6 | Signal aggregator, market context, earnings analysis, congressional trade tracker (kadoa-org STOCK Act dataset), module reference doc |
 | #7 | Approved plan for signal-model data pipelines (2026-07-05). Plan only, nothing built yet |
 
 ## Where we are
