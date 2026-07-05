@@ -202,7 +202,7 @@ Fixed before the first run, versioned with the code.
 - **Experiment log:** every run appends config hash, feature set, model, dates, metrics, git commit to `experiments.csv`. The trial count feeds a Harvey-Liu-Zhu significance bar: mean-IC t-stat above 3.0 before any signal is called real.
 - **Leakage tripwires, automated on every gold build and harness run:**
   1. Mean rank IC above 0.10 fails the build as a leakage alarm, not a success.
-  2. A model trained on the label lagged backward one day must score near-zero IC.
+  2. Within-date label shuffle: training and evaluating on labels randomly permuted across tickers within each date must produce near-zero IC. Anything above noise means the harness itself leaks (features encode past returns legitimately, so a shifted label is the wrong null; a shuffled one is exact).
   3. Full-table DuckDB scan asserting no feature value has `knowledge_time > as_of_date`.
   4. Knowledge-time shuffle canary: shifting `knowledge_time` forward one day must change joined values (proves the join keys on it).
   5. A deliberate-leak fixture that the purged-CV harness must catch, as a unit test of the harness itself.
