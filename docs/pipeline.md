@@ -15,6 +15,7 @@ pipeline/
   pattern_detection.py      Support/resistance, trading signals, trend scores
   market_context.py         Peer comparison, macro indicators, analyst data, earnings impact
   earnings_analysis.py      Revenue/earnings growth trends, margin analysis, P&L composition
+  signal_aggregator.py      Composite score from all signal categories, timeframes, seasonality
   congress_trades.py        Congressional stock trade data from STOCK Act disclosures
 
 dashboard/
@@ -25,10 +26,12 @@ data/                       Cached/exported data (gitignored contents)
 
 ## Data Sources
 
-All data comes from **yfinance**, which pulls from Yahoo Finance. No API key required.
+Most data comes from **yfinance**, which pulls from Yahoo Finance. No API key required.
 
 - **Price data**: OHLCV at daily resolution, configurable period (6mo to max)
 - **Fundamental data**: income statement, balance sheet, cash flow (annual + quarterly), plus company info and earnings dates
+- **Macro data**: 10Y Treasury yield, VIX, and US Dollar index via yfinance index tickers
+- **Congressional trades**: kadoa-org/congress-trading-monitor GitHub dataset (parsed STOCK Act disclosures), no API key required
 
 ## Technical Analysis Indicators
 
@@ -94,6 +97,10 @@ The dashboard runs on `http://localhost:8501` by default.
 
 ## Dashboard Features
 
+- Signal Overview: composite score gauge, category and timeframe breakdowns, yearly performance, seasonal charts
+- Market Context (toggle): analyst consensus, peer comparison, macro indicators, earnings impact
+- Earnings Breakdown: revenue composition, quarterly growth cards, margin trends
+- Congressional Trading Activity (toggle): summary metrics, party breakdown, timeline, politician lookup
 - Trend scores and active signal badges (color-coded bullish/bearish/neutral)
 - Candlestick chart with configurable overlays (MAs, Bollinger Bands, support/resistance lines)
 - RSI subplot with shaded overbought/oversold zones

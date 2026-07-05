@@ -1,6 +1,7 @@
 # Research Pipelines
 
 > **Keep this document current.** When you add, remove, or change a pipeline module or its functions, update the relevant section here in the same commit. Each section is self-contained so agents can read only what they need.
+> Project state and next steps: `docs/status.md`. Approved build plans: `docs/plans/`.
 
 ---
 
