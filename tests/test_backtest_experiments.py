@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from pipeline.backtest import (
     clears_significance_bar,
@@ -40,6 +41,14 @@ def test_log_aligns_differing_metric_sets_by_name(tmp_path):
     assert logged.loc[0, "mean_ic"] == 0.02
 
 
+def test_metrics_cannot_clobber_provenance_columns(tmp_path):
+    log_path = tmp_path / "experiments.csv"
+    with pytest.raises(ValueError):
+        log_experiment(log_path, {"a": 1}, {"config_hash": "EVIL", "mean_ic": 0.01})
+    assert count_trials(log_path) == 0
+
+
 def test_significance_bar():
     assert not clears_significance_bar(2.5)
+    assert not clears_significance_bar(3.0)
     assert clears_significance_bar(3.2)

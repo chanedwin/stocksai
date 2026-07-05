@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 SIGNIFICANCE_T_BAR = 3.0
+RESERVED_COLUMNS = {"logged_at_utc", "config_hash", "git_commit", "config"}
 
 
 def config_hash(config):
@@ -34,6 +35,9 @@ def log_experiment(path, config, metrics):
     write values under the wrong header.
     """
     path = Path(path)
+    clash = RESERVED_COLUMNS & set(metrics)
+    if clash:
+        raise ValueError(f"metrics keys collide with reserved columns: {sorted(clash)}")
     row = {
         "logged_at_utc": datetime.now(timezone.utc).isoformat(),
         "config_hash": config_hash(config),

@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from pipeline.backtest import walk_forward_splits
 
@@ -22,7 +23,7 @@ def test_expanding_folds_are_disjoint_and_grow(panel):
 
 def test_purging_drops_train_rows_whose_labels_cross_into_validation(panel):
     splits = walk_forward_splits(
-        panel, min_train_periods=6, val_periods=3, test_periods=3
+        panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
     )
     val_start = splits[0].val_start
     dates = sorted(panel["date"].unique())
@@ -39,7 +40,7 @@ def test_purging_drops_train_rows_whose_labels_cross_into_validation(panel):
     )
     panel_with_leak = pd.concat([panel, leaky], ignore_index=True)
     splits_with_leak = walk_forward_splits(
-        panel_with_leak, min_train_periods=6, val_periods=3, test_periods=3
+        panel_with_leak, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
     )
     assert splits_with_leak[0].val_start == val_start
     leaky_idx = panel_with_leak.index[panel_with_leak["ticker"] == "LEAKY"][0]
@@ -52,7 +53,7 @@ def test_purging_drops_train_rows_whose_labels_cross_into_validation(panel):
 
 def test_embargo_widens_the_gap_before_validation(panel):
     no_embargo = walk_forward_splits(
-        panel, min_train_periods=6, val_periods=3, test_periods=3
+        panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
     )
     with_embargo = walk_forward_splits(
         panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="30D"
@@ -60,6 +61,62 @@ def test_embargo_widens_the_gap_before_validation(panel):
     assert len(with_embargo[0].train_idx) < len(no_embargo[0].train_idx)
     train_label_ends = panel.loc[with_embargo[0].train_idx, "label_end_date"]
     assert (train_label_ends < with_embargo[0].val_start - pd.Timedelta("30D")).all()
+
+
+def test_default_embargo_is_30_calendar_days(panel):
+    default = walk_forward_splits(panel, min_train_periods=6, val_periods=3, test_periods=3)
+    explicit = walk_forward_splits(
+        panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="30D"
+    )
+    zero = walk_forward_splits(
+        panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
+    )
+    assert list(default[0].train_idx) == list(explicit[0].train_idx)
+    assert len(default[0].train_idx) < len(zero[0].train_idx)
+
+
+def test_val_rows_with_labels_crossing_into_test_are_purged(panel):
+    splits = walk_forward_splits(
+        panel, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
+    )
+    dates = sorted(panel["date"].unique())
+    val_date = dates[7]
+    test_start = splits[0].test_start
+    leaky_val = pd.DataFrame(
+        {
+            "date": [val_date],
+            "ticker": ["LEAKYVAL"],
+            "signal": [0.0],
+            "distractor": [0.0],
+            "label": [0.0],
+            "label_end_date": [test_start + pd.Timedelta(days=10)],
+        }
+    )
+    panel_with_leak = pd.concat([panel, leaky_val], ignore_index=True)
+    splits_with_leak = walk_forward_splits(
+        panel_with_leak, min_train_periods=6, val_periods=3, test_periods=3, embargo="0D"
+    )
+    leaky_idx = panel_with_leak.index[panel_with_leak["ticker"] == "LEAKYVAL"][0]
+    assert leaky_idx not in splits_with_leak[0].val_idx
+    clean_sibling = panel_with_leak.index[
+        (panel_with_leak["date"] == val_date) & (panel_with_leak["ticker"] == "T000")
+    ][0]
+    assert clean_sibling in splits_with_leak[0].val_idx
+
+
+def test_invalid_parameters_raise():
+    panel = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-31", periods=4, freq="ME"),
+            "label_end_date": pd.date_range("2024-01-31", periods=4, freq="ME") + pd.Timedelta(days=21),
+        }
+    )
+    with pytest.raises(ValueError):
+        walk_forward_splits(panel, min_train_periods=0, val_periods=1, test_periods=1)
+    with pytest.raises(ValueError):
+        walk_forward_splits(panel, min_train_periods=1, val_periods=1, test_periods=0)
+    with pytest.raises(ValueError):
+        walk_forward_splits(panel, min_train_periods=1, val_periods=-1, test_periods=1)
 
 
 def test_rows_without_label_end_never_train(panel):

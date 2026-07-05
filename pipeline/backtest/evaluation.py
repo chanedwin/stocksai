@@ -17,31 +17,78 @@ def rank_ic(panel, score_col, label_col, date_col="date"):
     return ic.dropna()
 
 
-def summarize_ic(ic):
+def overlap_lag(panel, date_col="date", label_end_col="label_end_date"):
+    """Max number of later scoring dates that fall inside one label window.
+
+    Zero means labels never overlap across scoring dates and the plain
+    t-stat is valid; anything above zero must be passed to summarize_ic
+    as nw_lag or the t-stat overstates significance.
+    """
+    ends = panel.groupby(date_col)[label_end_col].max().sort_index()
+    dates = ends.index
+    lag = 0
+    for date, end in ends.items():
+        if pd.isna(end):
+            continue
+        lag = max(lag, int(((dates > date) & (dates < end)).sum()))
+    return lag
+
+
+def summarize_ic(ic, nw_lag=0):
+    """Mean/stability summary of a per-date IC series.
+
+    Per-date ICs are serially correlated whenever label windows overlap
+    across scoring dates, which inflates the plain t-stat. Pass
+    nw_lag=overlap_lag(panel) to use a Newey-West standard error instead.
+    """
     n = int(len(ic))
     if n == 0:
-        return {"mean_ic": np.nan, "std_ic": np.nan, "icir": np.nan, "t_stat": np.nan, "n_dates": 0}
+        return {"mean_ic": np.nan, "std_ic": np.nan, "icir": np.nan, "t_stat": np.nan, "n_dates": 0, "nw_lag": int(nw_lag)}
     mean = float(ic.mean())
     std = float(ic.std(ddof=1)) if n > 1 else np.nan
     icir = mean / std if n > 1 and std > 0 else np.nan
-    t_stat = icir * np.sqrt(n) if n > 1 and std > 0 else np.nan
-    return {"mean_ic": mean, "std_ic": std, "icir": icir, "t_stat": t_stat, "n_dates": n}
+    t_stat = np.nan
+    if n > 1 and std > 0:
+        if nw_lag > 0:
+            x = ic.to_numpy(dtype=float) - mean
+            long_run_var = float(np.dot(x, x)) / n
+            for k in range(1, min(int(nw_lag), n - 1) + 1):
+                gamma_k = float(np.dot(x[k:], x[:-k])) / n
+                long_run_var += 2.0 * (1.0 - k / (nw_lag + 1.0)) * gamma_k
+            if long_run_var > 0:
+                t_stat = mean / np.sqrt(long_run_var / n)
+        else:
+            t_stat = icir * np.sqrt(n)
+    return {"mean_ic": mean, "std_ic": std, "icir": icir, "t_stat": t_stat, "n_dates": n, "nw_lag": int(nw_lag)}
 
 
 def quantile_returns(panel, score_col, label_col, date_col="date", n_quantiles=10):
-    """Mean realized label per score quantile per date (1 = lowest scores)."""
+    """Mean realized label per score quantile per date (1 = lowest scores).
+
+    Dates with fewer valid names than n_quantiles are dropped: assigning
+    3 names across 10 buckets puts them all in high quantiles and distorts
+    every cross-date aggregate.
+    """
     df = panel[[date_col, score_col, label_col]].dropna().copy()
+    counts = df.groupby(date_col)[score_col].transform("size")
+    df = df[counts >= n_quantiles]
     ranks = df.groupby(date_col)[score_col].rank(pct=True, method="first")
     df["quantile"] = np.ceil(ranks * n_quantiles).clip(1, n_quantiles).astype(int)
     return df.pivot_table(index=date_col, columns="quantile", values=label_col, aggfunc="mean")
 
 
 def long_short_spread(quantile_df):
+    if quantile_df.empty or len(quantile_df.columns) == 0:
+        return pd.Series(dtype=float)
     return quantile_df[quantile_df.columns.max()] - quantile_df[quantile_df.columns.min()]
 
 
 def hit_rate(spread):
-    return float((spread > 0).mean())
+    """Share of dates with a positive spread, over defined spreads only."""
+    valid = spread.dropna()
+    if len(valid) == 0:
+        return float("nan")
+    return float((valid > 0).mean())
 
 
 def monotonicity(quantile_df):
@@ -67,6 +114,10 @@ def top_quantile_turnover(panel, score_col, date_col="date", ticker_col="ticker"
 
 
 def net_spread(spread, turnover, cost_bps_per_side):
-    """Spread net of costs: both legs trade `turnover` one-way, each paying per-side costs."""
-    cost = 2.0 * turnover.reindex(spread.index).fillna(0.0) * 2.0 * cost_bps_per_side / 10_000
+    """Spread net of costs: both legs trade `turnover` one-way, each paying per-side costs.
+
+    Dates without a turnover observation (the first rebalance, always)
+    yield NaN rather than trading for free.
+    """
+    cost = 2.0 * turnover.reindex(spread.index) * 2.0 * cost_bps_per_side / 10_000
     return spread - cost

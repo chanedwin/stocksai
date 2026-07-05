@@ -233,20 +233,22 @@
 
 | Function | Input | Output | Notes |
 |----------|-------|--------|-------|
-| `walk_forward_splits(panel, ..., min_train_periods, val_periods, test_periods, embargo)` | panel with date + label_end_date columns | list of `Split` (train/val/test row indexes, fold boundary dates) | Expanding window. A row trains only if `label_end_date < val_start - embargo`; NaT label ends never train. |
+| `walk_forward_splits(panel, ..., min_train_periods, val_periods, test_periods, embargo)` | panel with date + label_end_date columns | list of `Split` (train/val/test row indexes, fold boundary dates) | Expanding window. A row trains only if `label_end_date < val_start - embargo`; val rows likewise purge against test_start; NaT label ends never train. Embargo defaults to 30 calendar days (~21 trading days). |
 | `rank_ic(panel, score_col, label_col)` | panel | per-date Spearman IC Series | Dates with fewer than 3 valid pairs or constant values are dropped. |
-| `summarize_ic(ic)` | IC Series | dict: mean_ic, std_ic, icir, t_stat, n_dates | |
-| `quantile_returns(panel, score_col, label_col, n_quantiles)` | panel | date x quantile mean-label DataFrame | Quantile 1 = lowest scores. |
-| `long_short_spread` / `hit_rate` / `monotonicity` | quantile DataFrame | Series / float / float | |
-| `top_quantile_turnover(panel, score_col, quantile)` | panel | per-date one-way turnover Series | Membership change of the top score bucket. |
-| `net_spread(spread, turnover, cost_bps_per_side)` | spread + turnover | net spread Series | Both legs trade the one-way turnover, each paying per-side costs (factor 4 on turnover x bps). |
-| `check_ic_alarm(mean_ic)` | float | raises `LeakageAlarm` above 0.10 | High IC is treated as a bug, not a win. |
-| `shuffled_labels(panel, label_col, seed)` / `check_shuffle_null(mean_ic)` | panel / float | Series / raises | Within-date label permutation: the leak-free null must score near zero. |
-| `check_knowledge_time(panel, knowledge_col)` | panel | raises on any knowledge_time after the row date | |
-| `config_hash` / `log_experiment` / `count_trials` / `clears_significance_bar` | config dict, metrics | 12-char hash / appended CSV row / int / bool | Every trial is logged; t > 3.0 bar per the plan. |
+| `overlap_lag(panel)` | panel | int | Max number of later scoring dates inside one label window; 0 means no overlap. |
+| `summarize_ic(ic, nw_lag=0)` | IC Series | dict: mean_ic, std_ic, icir, t_stat, n_dates, nw_lag | With nw_lag > 0 the t-stat uses a Newey-West standard error. Pass `nw_lag=overlap_lag(panel)` whenever scoring is finer than the label horizon, or the t-stat overstates significance. |
+| `quantile_returns(panel, score_col, label_col, n_quantiles)` | panel | date x quantile mean-label DataFrame | Quantile 1 = lowest scores. Dates with fewer valid names than n_quantiles are dropped. |
+| `long_short_spread` / `hit_rate` / `monotonicity` | quantile DataFrame | Series / float / float | Empty input yields an empty Series; hit_rate counts defined spreads only (NaN excluded, all-NaN gives NaN). |
+| `top_quantile_turnover(panel, score_col, quantile)` | panel | per-date one-way turnover Series | Membership change of the top score bucket; starts at the second date. |
+| `net_spread(spread, turnover, cost_bps_per_side)` | spread + turnover | net spread Series | Both legs trade the one-way turnover, each paying per-side costs (factor 4 on turnover x bps). Dates without a turnover observation yield NaN, never zero cost. |
+| `check_ic_alarm(mean_ic)` | float | raises `LeakageAlarm` above 0.10 (either sign) | High IC is treated as a bug, not a win. |
+| `shuffled_labels(panel, label_col, seed)` / `check_shuffle_null(ic_series)` | panel / IC Series | Series / raises | Within-date label permutation; the null check is t-based (alarm above 4 standard errors), so it scales with panel size. |
+| `check_knowledge_time(panel, knowledge_col)` | panel | raises on knowledge_time after, or missing from, the row date | Missing timestamps are violations: they are the symptom of broken as-of joins. |
+| `config_hash` / `log_experiment` / `count_trials` / `clears_significance_bar` | config dict, metrics | 12-char hash / appended CSV row / int / bool | Every trial is logged; metrics keys colliding with provenance columns raise; t > 3.0 bar (strict) per the plan. |
 
 **Gotchas:**
 - Purging is driven by `label_end_date`, not by the row date; build labels with their true window end.
-- The embargo is an extra gap subtracted from `val_start` when admitting training rows.
+- The embargo is an extra gap subtracted from `val_start`/`test_start` when admitting earlier rows; the 30-calendar-day default approximates the protocol's 21 trading days until an exchange calendar lands (plan Phase 0).
+- Per-date ICs are serially correlated when label windows overlap scoring dates; the plain t-stat is only valid at `overlap_lag(panel) == 0`.
 - All evaluation belongs on test folds only; validation folds are for tuning.
-- Tests live in `tests/`; run `python -m pytest tests/`. The purge test is mutation-verified (disabling purging fails it).
+- Tests live in `tests/`; run `python -m pytest tests/`. Purge, val-purge, tripwire boundaries, and turnover sizing are mutation-verified.

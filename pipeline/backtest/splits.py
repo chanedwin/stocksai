@@ -29,8 +29,12 @@ def walk_forward_splits(
     validation block starts (minus the embargo gap), so overlapping forward
     labels cannot carry evaluation-period information into training. Rows
     with a missing label end date never enter training or validation.
+
+    The embargo defaults to 30 calendar days, approximating the protocol's
+    21 trading days until an exchange calendar lands (plan Phase 0). Pass
+    embargo="0D" only when deliberately testing purge behavior in isolation.
     """
-    embargo = pd.Timedelta(0) if embargo is None else pd.Timedelta(embargo)
+    embargo = pd.Timedelta(days=30) if embargo is None else pd.Timedelta(embargo)
     dates = pd.DatetimeIndex(sorted(pd.unique(panel[date_col])))
     if min_train_periods < 1 or val_periods < 0 or test_periods < 1:
         raise ValueError("periods must be positive (val_periods may be 0)")
