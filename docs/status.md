@@ -20,6 +20,7 @@ Run it: `pip install -r requirements.txt && streamlit run dashboard/app.py`
 | #6 | Signal aggregator, market context, earnings analysis, congressional trade tracker (kadoa-org STOCK Act dataset), module reference doc |
 | #7 | Approved plan for signal-model data pipelines (2026-07-05). Plan only |
 | #9 | Backtest harness: purged walk-forward splits, rank-IC/decile evaluation, leakage tripwires, experiment log, first test suite, `/backtest` skill |
+| #10 | Verified survey of neglected signal areas: 42 candidates adversarially checked, 2 survivors, ~20 salvaged variants, do-not-chase list |
 
 ## Where we are
 
@@ -47,6 +48,7 @@ Each phase: own branch, own PR, tests, and a `docs/research-pipelines.md` update
 | `docs/pipeline.md` | Human-oriented overview and how to run |
 | `docs/research-pipelines.md` | Module-by-module reference; must stay in sync with code |
 | `docs/plans/` | Approved build plans |
+| `docs/research/` | Verified research surveys feeding the plan backlog |
 
 ## Gotchas for new agents
 
