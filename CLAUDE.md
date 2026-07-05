@@ -9,6 +9,8 @@
 
 This project builds a stock analysis application. The goal is to understand stock price movements, identify what drives them (earnings, macro events, sector rotation, sentiment, technical signals), and surface that analysis clearly. The app is for research and education, not financial advice. Before any task, confirm the output doesn't cross into personalized investment recommendations.
 
+Then read `docs/status.md`: a short orientation covering what has been built so far and what to do next. When you merge meaningful work, update its "Where we are" and "Next up" sections in the same PR.
+
 ---
 
 ## 1. Project purpose
