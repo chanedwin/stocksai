@@ -29,6 +29,17 @@ def test_log_experiment_appends_and_counts(tmp_path):
     assert set(["logged_at_utc", "git_commit", "config", "mean_ic", "t_stat"]) <= set(logged.columns)
 
 
+def test_log_aligns_differing_metric_sets_by_name(tmp_path):
+    log_path = tmp_path / "experiments.csv"
+    log_experiment(log_path, {"a": 1}, {"mean_ic": 0.02, "t_stat": 1.1})
+    log_experiment(log_path, {"a": 2}, {"sharpe": 0.4})
+    logged = pd.read_csv(log_path)
+    assert logged.loc[1, "sharpe"] == 0.4
+    assert pd.isna(logged.loc[1, "mean_ic"])
+    assert pd.isna(logged.loc[0, "sharpe"])
+    assert logged.loc[0, "mean_ic"] == 0.02
+
+
 def test_significance_bar():
     assert not clears_significance_bar(2.5)
     assert clears_significance_bar(3.2)

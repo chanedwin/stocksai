@@ -28,7 +28,11 @@ def _git_commit():
 
 
 def log_experiment(path, config, metrics):
-    """Append one trial to the experiment log. Every run counts, even failures."""
+    """Append one trial to the experiment log. Every run counts, even failures.
+
+    Rows are aligned by column name so runs with different metric sets never
+    write values under the wrong header.
+    """
     path = Path(path)
     row = {
         "logged_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -37,7 +41,10 @@ def log_experiment(path, config, metrics):
         "config": json.dumps(config, sort_keys=True, default=str),
         **metrics,
     }
-    pd.DataFrame([row]).to_csv(path, mode="a", header=not path.exists(), index=False)
+    new = pd.DataFrame([row])
+    if path.exists():
+        new = pd.concat([pd.read_csv(path), new], ignore_index=True)
+    new.to_csv(path, index=False)
     return row["config_hash"]
 
 
