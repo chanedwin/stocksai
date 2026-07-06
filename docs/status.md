@@ -3,7 +3,7 @@
 > **Audience:** any agent (or human) starting work on this repo. Read this, then follow the rules in `CLAUDE.md`.
 > **Keep it current:** when you merge meaningful work, update "Where we are" and "Next up" in the same PR. Keep this document short; details belong in the linked docs.
 
-**Last updated:** 2026-07-05
+**Last updated:** 2026-07-06
 
 ## What this project is
 
@@ -21,6 +21,8 @@ Run it: `pip install -r requirements.txt && streamlit run dashboard/app.py`
 | #7 | Approved plan for signal-model data pipelines (2026-07-05). Plan only |
 | #9 | Backtest harness: purged walk-forward splits, rank-IC/decile evaluation, leakage tripwires, experiment log, first test suite, `/backtest` skill |
 | #10 | Verified survey of neglected signal areas: 42 candidates adversarially checked, 2 survivors, ~20 salvaged variants, do-not-chase list |
+| #11 | Verified survey of tail-risk signals: 36 candidates, 3 survivors; raises Phase 1 option-chain snapshot urgency; bans yfinance-only tail backtests (survivorship bias) |
+| #12 | CI: pytest + prose lint on every PR, `scripts/check_prose.py` enforcing CLAUDE.md section 4, Claude Code hook linting markdown as agents write it |
 
 ## Where we are
 
