@@ -30,7 +30,7 @@ Official cycle schedule (settlement, due, publication dates) is published on the
 
 ## 4. kadoa-org congress feed
 
-Hands-on inspection (2026-07-06): actively refreshed (daily bot commits, latest 2026-07-05), 64,314 trades spanning 2011 to present across house, senate, and executive-branch sources. Every sampled record has both `transaction_date` and `filing_date`, plus `days_to_file` and `is_late`. Median disclosure lag is 31 days, p90 is 172 days: any point-in-time feature must join on `filing_date`, not `transaction_date`. **New gotcha:** the flat `trades.json` is capped at the most recent 5,000 records; full history requires the per-filer and per-ticker files. `pipeline/congress_trades.py` should be checked against this cap, and the planned archive collector must walk the per-filer files.
+Hands-on inspection (2026-07-06): actively refreshed (daily bot commits, latest 2026-07-05), 64,314 trades spanning 2011 to present across house, senate, and executive-branch sources. Every sampled record has both `transaction_date` and `filing_date`, plus `days_to_file` and `is_late`. Median disclosure lag is 31 days, p90 is 172 days: any point-in-time feature must join on `filing_date`, not `transaction_date`. **New gotcha:** the flat `trades.json` is capped at the most recent 5,000 records; full history requires the per-filer and per-ticker files. `pipeline/congress_trades.py` is unaffected (it already fetches the per-ticker and per-filer files), but the planned archive collector must walk the per-filer files rather than the flat file.
 
 ## 5. fja05680/sp500 constituents CSV
 
