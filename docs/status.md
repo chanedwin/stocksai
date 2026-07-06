@@ -39,7 +39,7 @@ Execute `docs/plans/2026-07-05-signal-model-data-pipelines.md`, in phase order:
 3. **Phases 2-4:** feature panel with leakage tripwires, first cross-sectional model (M0) with purged walk-forward validation, dashboard Signal Research page.
 4. **Phases 5-6:** source backlog (FRED/ALFRED, FINRA, EDGAR, earnings surprises, insiders) feeding M1, then forward-collected features feeding M2.
 
-Each phase: own branch, own PR, tests, and a `docs/research-pipelines.md` update in the same commit. Run the plan's section 11 verification checklist items before building on any free-tier assumption.
+Each phase: own branch, own PR, tests, and a `docs/research-pipelines.md` update in the same commit. The plan's section 11 checklist is now mostly verified (see `docs/research/2026-07-06-vendor-verification.md`): key corrections are Tiingo's 50/hour cap, the kadoa flat file's 5,000-trade cap, and a market-hours re-test required for option-snapshot quote quality. Key-gated items (Tiingo delisted history, ex-member coverage, Alpha Vantage frozen estimates) resolve inside Phases 0-1.
 
 ## Key documents
 
