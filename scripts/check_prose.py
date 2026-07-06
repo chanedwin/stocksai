@@ -9,8 +9,12 @@ import re
 import sys
 from pathlib import Path
 
+# Context-dependent terms from CLAUDE.md section 4.2 (leverage as a verb,
+# comprehensive as praise, robust outside statistics, metaphorical
+# landscape) are left to human review; only unambiguous bans are linted.
 BANNED_WORDS = [
     "delve",
+    "notably",
     "utilize",
     "furthermore",
     "moreover",
