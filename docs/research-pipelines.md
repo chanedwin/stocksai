@@ -252,3 +252,32 @@
 - Per-date ICs are serially correlated when label windows overlap scoring dates; the plain t-stat is only valid at `overlap_lag(panel) == 0`.
 - All evaluation belongs on test folds only; validation folds are for tuning.
 - Tests live in `tests/`; run `python -m pytest tests/`. Purge, val-purge, tripwire boundaries, and turnover sizing are mutation-verified.
+
+---
+
+<!-- SECTION: collect-skeleton -->
+## 12. Collection Skeleton (Phase 0)
+
+**Modules:** `pipeline/collect/{state,storage,schemas,trading_calendar,symbols,cli}.py`
+**CLI:** `python -m pipeline.collect.cli {init,status,universe,verify-constituents,trading-day}`
+
+| Function | Input | Output | Notes |
+|----------|-------|--------|-------|
+| `state.connect(db_path)` | optional path | sqlite3 connection, schema ensured | Default `data/state/pipeline.sqlite` |
+| `state.get_watermark` / `set_watermark` | conn, source, ticker="*" | ISO date str or None | Market-level sources use ticker "*" |
+| `state.start_run` / `finish_run` | conn, source / run_id, status, rows | run id / none | Every collector run writes a row |
+| `state.spend_quota(conn, source, consumer, date, n, daily_limit)` | shared budget params | bool (False = budget lacks room) | Arbitrates shared free tiers, e.g. Alpha Vantage 25/day |
+| `state.missed_days(conn, source, expected_dates)` | list of ISO dates | dates with no successful run | Feeds collector-health alerts |
+| `storage.atomic_write(target, write_fn)` | path + callable receiving a `.partial` path | target path | Swap is atomic; failure leaves target untouched; works for files and partition dirs |
+| `storage.bronze_path` / `silver_path` / `rejects_path` | source/dataset + partition | Path under `data/` | Layout per plan section 4 |
+| `schemas.validate_to_silver(df, schema=PRICE_SCHEMA)` | DataFrame | (valid, rejects) | Rejects carry `_reject_reason`; nothing drops silently |
+| `trading_calendar.is_trading_day` / `trading_days` / `last_trading_day` | ISO dates | bool / list / ISO date | XNYS via exchange_calendars |
+| `symbols.normalize(ticker)` | raw ticker | canonical form | Dash share-class separator; FB renamed META |
+| `symbols.members_at(date)` | ISO date | set of tickers | Point-in-time S&P 500 from the vendored event-dated CSV |
+| `symbols.verify_constituents()` | none | list of problem strings | Membership-count bounds post-2004, TSLA/SMCI spot checks |
+
+**Gotchas:**
+- The constituents CSV is pinned to an upstream commit in `data/reference/SOURCES.md`; update pin, re-verify, and commit together.
+- Membership rows are event-dated: `members_at` takes the last row at or before the date, so queries before 1996-01-02 raise.
+- `data/bronze,silver,gold,state` are git-ignored; `cli init` creates them. Only `data/reference/` is tracked.
+- `PRICE_SCHEMA` rejects zero/negative prices; adjust before reusing for series where zeros are legitimate.
