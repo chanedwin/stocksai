@@ -1,6 +1,26 @@
+from pathlib import Path
+
 import pytest
 
 from pipeline.collect import storage
+
+
+def test_failed_swap_restores_previous_data(tmp_path, monkeypatch):
+    target = tmp_path / "data.parquet"
+    storage.atomic_write(target, lambda p: p.write_text("v1"))
+    original_rename = Path.rename
+
+    def flaky_rename(self, dst):
+        if self.name.endswith(".partial"):
+            raise OSError("swap failed")
+        return original_rename(self, dst)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(OSError):
+        storage.atomic_write(target, lambda p: p.write_text("v2"))
+    monkeypatch.undo()
+    assert target.read_text() == "v1"
+    assert list(tmp_path.iterdir()) == [target]
 
 
 def test_atomic_write_file(tmp_path):

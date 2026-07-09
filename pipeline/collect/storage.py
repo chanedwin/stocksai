@@ -43,9 +43,12 @@ def atomic_write(target: Path, write_fn) -> Path:
             target.rename(backup)
         try:
             partial.rename(target)
-        finally:
+        except Exception:
             if backup.exists():
-                _remove(backup)
+                backup.rename(target)
+            raise
+        if backup.exists():
+            _remove(backup)
         return target
     except Exception:
         if partial.exists():
