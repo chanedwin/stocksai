@@ -5,3 +5,9 @@ data/*.csv
 data/*.json
 .streamlit/
 .DS_Store
+
+data/bronze/
+data/silver/
+data/gold/
+data/state/
+.env
